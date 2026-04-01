@@ -1,56 +1,45 @@
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
-  IsUUID,
   MaxLength,
-  Min,
-  MinLength,
 } from 'class-validator';
+import { ProductUnit } from '../entities/product-unit.enum';
 
 export class CreateProductDto {
-  @IsString()
-  @MinLength(2)
-  @MaxLength(30)
-  code!: string;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  @MaxLength(50)
-  sku?: string;
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  companyId: number;
 
   @IsString()
-  @MinLength(2)
+  @IsNotEmpty()
   @MaxLength(150)
-  name!: string;
+  name: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
+  sku: string;
+
+  @IsEnum(ProductUnit)
+  unit: ProductUnit;
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  purchasePrice!: number;
+  @IsPositive()
+  buyPrice: number;
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  salePrice!: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  mrp?: number;
-
-  @IsUUID()
-  companyId!: string;
-
-  @IsUUID()
-  categoryId!: string;
-
-  @IsUUID()
-  unitId!: string;
+  @IsPositive()
+  salePrice: number;
 
   @IsOptional()
   @IsBoolean()

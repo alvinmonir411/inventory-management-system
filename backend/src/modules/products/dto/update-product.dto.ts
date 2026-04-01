@@ -1,5 +1,50 @@
-import { PartialType } from '@nestjs/mapped-types';
+import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  MaxLength,
+} from 'class-validator';
+import { ProductUnit } from '../entities/product-unit.enum';
 
-import { CreateProductDto } from './create-product.dto';
+export class UpdateProductDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  companyId?: number;
 
-export class UpdateProductDto extends PartialType(CreateProductDto) {}
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  sku?: string;
+
+  @IsOptional()
+  @IsEnum(ProductUnit)
+  unit?: ProductUnit;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  buyPrice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  salePrice?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}

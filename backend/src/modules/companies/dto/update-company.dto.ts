@@ -1,5 +1,26 @@
-import { PartialType } from '@nestjs/mapped-types';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 
-import { CreateCompanyDto } from './create-company.dto';
+export class UpdateCompanyDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  name?: string;
 
-export class UpdateCompanyDto extends PartialType(CreateCompanyDto) {}
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}

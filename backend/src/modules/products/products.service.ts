@@ -4,11 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
-
-import { Category } from '../categories/entities/category.entity';
+import { Repository } from 'typeorm';
 import { Company } from '../companies/entities/company.entity';
-import { Unit } from '../units/entities/unit.entity';
+import { StockMovement } from '../stock/entities/stock-movement.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { QueryProductsDto } from './dto/query-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -21,251 +19,120 @@ export class ProductsService {
     private readonly productsRepository: Repository<Product>,
     @InjectRepository(Company)
     private readonly companiesRepository: Repository<Company>,
-    @InjectRepository(Category)
-    private readonly categoriesRepository: Repository<Category>,
-    @InjectRepository(Unit)
-    private readonly unitsRepository: Repository<Unit>,
+    @InjectRepository(StockMovement)
+    private readonly stockMovementsRepository: Repository<StockMovement>,
   ) {}
 
-  async create(createProductDto: CreateProductDto): Promise<Product> {
-    const normalizedCode = createProductDto.code.trim().toUpperCase();
-    const normalizedSku = createProductDto.sku?.trim().toUpperCase() || null;
-    const normalizedName = createProductDto.name.trim();
+  async create(createProductDto: CreateProductDto) {
+    await this.ensureCompanyExists(createProductDto.companyId);
+    await this.ensureUniqueSku(
+      createProductDto.companyId,
+      createProductDto.sku,
+    );
 
-    await this.ensureUnique(normalizedCode, normalizedSku);
-
-    const [company, category, unit] = await Promise.all([
-      this.findCompanyOrFail(createProductDto.companyId),
-      this.findCategoryOrFail(createProductDto.categoryId),
-      this.findUnitOrFail(createProductDto.unitId),
-    ]);
-
-    const product = this.productsRepository.create({
-      code: normalizedCode,
-      sku: normalizedSku,
-      name: normalizedName,
-      purchasePrice: createProductDto.purchasePrice,
-      salePrice: createProductDto.salePrice,
-      mrp: createProductDto.mrp ?? null,
-      isActive: createProductDto.isActive ?? true,
-      company,
-      category,
-      unit,
-    });
-
-    const savedProduct = await this.productsRepository.save(product);
-
-    return this.findOne(savedProduct.id);
+    const product = this.productsRepository.create(createProductDto);
+    return this.productsRepository.save(product);
   }
 
-  async findAll(queryProductsDto: QueryProductsDto) {
-    const page = queryProductsDto.page ?? 1;
-    const limit = queryProductsDto.limit ?? 20;
-    const skip = (page - 1) * limit;
-
+  async findAll(query: QueryProductsDto) {
     const queryBuilder = this.productsRepository
       .createQueryBuilder('product')
       .leftJoinAndSelect('product.company', 'company')
-      .leftJoinAndSelect('product.category', 'category')
-      .leftJoinAndSelect('product.unit', 'unit')
-      .orderBy('product.name', 'ASC')
-      .skip(skip)
-      .take(limit);
+      .orderBy('product.name', 'ASC');
 
-    if (queryProductsDto.search) {
-      const normalizedSearch = `%${queryProductsDto.search.trim()}%`;
+    if (query.companyId) {
+      queryBuilder.andWhere('product.companyId = :companyId', {
+        companyId: query.companyId,
+      });
+    }
 
+    if (query.search) {
       queryBuilder.andWhere(
-        new Brackets((qb) => {
-          qb.where('product.name ILIKE :search', {
-            search: normalizedSearch,
-          })
-            .orWhere('product.code ILIKE :search', {
-              search: normalizedSearch,
-            })
-            .orWhere('product.sku ILIKE :search', {
-              search: normalizedSearch,
-            });
-        }),
+        '(product.name ILIKE :search OR product.sku ILIKE :search)',
+        {
+          search: `%${query.search}%`,
+        },
       );
     }
 
-    if (queryProductsDto.companyId) {
-      queryBuilder.andWhere('company.id = :companyId', {
-        companyId: queryProductsDto.companyId,
+    if (query.isActive !== undefined) {
+      queryBuilder.andWhere('product.isActive = :isActive', {
+        isActive: query.isActive,
       });
     }
 
-    if (queryProductsDto.categoryId) {
-      queryBuilder.andWhere('category.id = :categoryId', {
-        categoryId: queryProductsDto.categoryId,
-      });
-    }
-
-    if (queryProductsDto.unitId) {
-      queryBuilder.andWhere('unit.id = :unitId', {
-        unitId: queryProductsDto.unitId,
-      });
-    }
-
-    if (queryProductsDto.isActive !== undefined) {
-      queryBuilder.andWhere('product.is_active = :isActive', {
-        isActive: queryProductsDto.isActive,
-      });
-    }
-
-    const [data, total] = await queryBuilder.getManyAndCount();
-
-    return {
-      data,
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+    return queryBuilder.getMany();
   }
 
-  async findOne(id: string): Promise<Product> {
+  async findOne(id: number) {
     const product = await this.productsRepository.findOne({
       where: { id },
       relations: {
         company: true,
-        category: true,
-        unit: true,
       },
     });
 
     if (!product) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException('Product not found.');
     }
 
     return product;
   }
 
-  async update(
-    id: string,
-    updateProductDto: UpdateProductDto,
-  ): Promise<Product> {
+  async update(id: number, updateProductDto: UpdateProductDto) {
     const product = await this.findOne(id);
-    const nextCode = updateProductDto.code?.trim().toUpperCase();
-    const nextSku =
-      updateProductDto.sku !== undefined
-        ? updateProductDto.sku?.trim().toUpperCase() || null
-        : product.sku;
-    const nextName = updateProductDto.name?.trim();
+    const nextCompanyId = updateProductDto.companyId ?? product.companyId;
+    const nextSku = updateProductDto.sku ?? product.sku;
 
-    if ((nextCode && nextCode !== product.code) || nextSku !== product.sku) {
-      await this.ensureUnique(nextCode ?? product.code, nextSku, id);
+    await this.ensureCompanyExists(nextCompanyId);
+
+    if (nextCompanyId !== product.companyId || nextSku !== product.sku) {
+      await this.ensureUniqueSku(nextCompanyId, nextSku, product.id);
     }
 
-    if (updateProductDto.companyId) {
-      product.company = await this.findCompanyOrFail(updateProductDto.companyId);
-    }
-
-    if (updateProductDto.categoryId) {
-      product.category = await this.findCategoryOrFail(
-        updateProductDto.categoryId,
-      );
-    }
-
-    if (updateProductDto.unitId) {
-      product.unit = await this.findUnitOrFail(updateProductDto.unitId);
-    }
-
-    product.code = nextCode ?? product.code;
-    product.sku = nextSku;
-    product.name = nextName ?? product.name;
-    product.purchasePrice =
-      updateProductDto.purchasePrice ?? product.purchasePrice;
-    product.salePrice = updateProductDto.salePrice ?? product.salePrice;
-    product.mrp =
-      updateProductDto.mrp !== undefined ? updateProductDto.mrp : product.mrp;
-    product.isActive = updateProductDto.isActive ?? product.isActive;
-
-    const updatedProduct = await this.productsRepository.save(product);
-
-    return this.findOne(updatedProduct.id);
+    Object.assign(product, updateProductDto);
+    return this.productsRepository.save(product);
   }
 
-  async remove(id: string): Promise<{ message: string }> {
+  async remove(id: number) {
     const product = await this.findOne(id);
+    const stockMovementCount = await this.stockMovementsRepository.count({
+      where: { productId: product.id },
+    });
+
+    if (stockMovementCount > 0) {
+      throw new ConflictException(
+        'Product cannot be deleted while stock movements exist for it.',
+      );
+    }
 
     await this.productsRepository.remove(product);
-
-    return {
-      message: 'Product deleted successfully',
-    };
+    return { success: true };
   }
 
-  private async ensureUnique(
-    code: string,
-    sku: string | null,
-    excludeId?: string,
-  ): Promise<void> {
-    const queryBuilder = this.productsRepository
-      .createQueryBuilder('product')
-      .where(
-        new Brackets((qb) => {
-          qb.where('product.code = :code', { code });
-
-          if (sku !== null) {
-            qb.orWhere('product.sku = :sku', { sku });
-          }
-        }),
-      );
-
-    if (excludeId) {
-      queryBuilder.andWhere('product.id != :excludeId', { excludeId });
-    }
-
-    const existingProduct = await queryBuilder.getOne();
-
-    if (!existingProduct) {
-      return;
-    }
-
-    if (existingProduct.code === code) {
-      throw new ConflictException('Product code already exists');
-    }
-
-    throw new ConflictException('Product SKU already exists');
-  }
-
-  private async findCompanyOrFail(companyId: string): Promise<Company> {
+  private async ensureCompanyExists(companyId: number) {
     const company = await this.companiesRepository.findOne({
       where: { id: companyId },
     });
 
     if (!company) {
-      throw new NotFoundException('Company not found');
+      throw new NotFoundException('Company not found.');
     }
-
-    return company;
   }
 
-  private async findCategoryOrFail(categoryId: string): Promise<Category> {
-    const category = await this.categoriesRepository.findOne({
-      where: { id: categoryId },
+  private async ensureUniqueSku(
+    companyId: number,
+    sku: string,
+    excludeProductId?: number,
+  ) {
+    const existingProduct = await this.productsRepository.findOne({
+      where: { companyId, sku },
     });
 
-    if (!category) {
-      throw new NotFoundException('Category not found');
+    if (existingProduct && existingProduct.id !== excludeProductId) {
+      throw new ConflictException(
+        'Product SKU already exists for this company.',
+      );
     }
-
-    return category;
-  }
-
-  private async findUnitOrFail(unitId: string): Promise<Unit> {
-    const unit = await this.unitsRepository.findOne({
-      where: { id: unitId },
-    });
-
-    if (!unit) {
-      throw new NotFoundException('Unit not found');
-    }
-
-    return unit;
   }
 }

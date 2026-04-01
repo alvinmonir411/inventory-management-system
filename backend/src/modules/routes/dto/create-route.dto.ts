@@ -1,26 +1,21 @@
 import {
   IsBoolean,
+  IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
-  MinLength,
 } from 'class-validator';
 
 export class CreateRouteDto {
   @IsString()
-  @MinLength(2)
-  @MaxLength(20)
-  code!: string;
-
-  @IsString()
-  @MinLength(2)
-  @MaxLength(100)
-  name!: string;
+  @IsNotEmpty()
+  @MaxLength(150)
+  name: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(500)
-  note?: string;
+  @MaxLength(150)
+  area?: string;
 
   @IsOptional()
   @IsBoolean()

@@ -1,15 +1,13 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
-  ParseUUIDPipe,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
 } from '@nestjs/common';
-
 import { CreateRouteDto } from './dto/create-route.dto';
 import { QueryRoutesDto } from './dto/query-routes.dto';
 import { UpdateRouteDto } from './dto/update-route.dto';
@@ -25,25 +23,30 @@ export class RoutesController {
   }
 
   @Get()
-  findAll(@Query() queryRoutesDto: QueryRoutesDto) {
-    return this.routesService.findAll(queryRoutesDto);
+  findAll(@Query() query: QueryRoutesDto) {
+    return this.routesService.findAll(query);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
+  findOne(@Param('id', ParseIntPipe) id: number) {
     return this.routesService.findOne(id);
+  }
+
+  @Get(':id/shops')
+  listShops(@Param('id', ParseIntPipe) id: number) {
+    return this.routesService.listShops(id);
   }
 
   @Patch(':id')
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateRouteDto: UpdateRouteDto,
   ) {
     return this.routesService.update(id, updateRouteDto);
   }
 
-  @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.routesService.remove(id);
+  @Patch(':id/deactivate')
+  deactivate(@Param('id', ParseIntPipe) id: number) {
+    return this.routesService.deactivate(id);
   }
 }

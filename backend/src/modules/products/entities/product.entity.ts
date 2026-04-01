@@ -5,93 +5,68 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-
-import { Category } from '../../categories/entities/category.entity';
+import { numericColumnTransformer } from '../../../common/database/numeric.transformer';
 import { Company } from '../../companies/entities/company.entity';
-import { Unit } from '../../units/entities/unit.entity';
-
-const decimalTransformer = {
-  to: (value: number | null): number | null => value,
-  from: (value: string | null): number | null =>
-    value === null ? null : Number(value),
-};
+import { StockMovement } from '../../stock/entities/stock-movement.entity';
+import { ProductUnit } from './product-unit.enum';
 
 @Entity({ name: 'products' })
-@Index('products_company_category_idx', ['company', 'category'])
+@Index(['companyId', 'sku'], { unique: true })
 export class Product {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  @Index('products_code_unique', { unique: true })
-  @Column({ type: 'varchar', length: 30 })
-  code!: string;
+  @Column()
+  companyId: number;
 
-  @Index('products_sku_unique', { unique: true })
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  sku!: string | null;
+  @Column({ length: 150 })
+  name: string;
 
-  @Index('products_name_idx')
-  @Column({ type: 'varchar', length: 150 })
-  name!: string;
+  @Column({ length: 80 })
+  sku: string;
 
   @Column({
-    name: 'purchase_price',
-    type: 'decimal',
-    precision: 12,
-    scale: 2,
-    transformer: decimalTransformer,
+    type: 'enum',
+    enum: ProductUnit,
+    default: ProductUnit.PCS,
   })
-  purchasePrice!: number;
-
-  @Column({
-    name: 'sale_price',
-    type: 'decimal',
-    precision: 12,
-    scale: 2,
-    transformer: decimalTransformer,
-  })
-  salePrice!: number;
+  unit: ProductUnit;
 
   @Column({
     type: 'decimal',
     precision: 12,
     scale: 2,
-    nullable: true,
-    transformer: decimalTransformer,
+    transformer: numericColumnTransformer,
   })
-  mrp!: number | null;
+  buyPrice: number;
 
-  @ManyToOne(() => Company, {
-    nullable: false,
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: numericColumnTransformer,
+  })
+  salePrice: number;
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @ManyToOne(() => Company, (company) => company.products, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'company_id' })
-  company!: Company;
+  @JoinColumn({ name: 'companyId' })
+  company: Company;
 
-  @ManyToOne(() => Category, {
-    nullable: false,
-    onDelete: 'RESTRICT',
-  })
-  @JoinColumn({ name: 'category_id' })
-  category!: Category;
-
-  @ManyToOne(() => Unit, {
-    nullable: false,
-    onDelete: 'RESTRICT',
-  })
-  @JoinColumn({ name: 'unit_id' })
-  unit!: Unit;
-
-  @Index('products_is_active_idx')
-  @Column({ name: 'is_active', type: 'boolean', default: true })
-  isActive!: boolean;
-
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt!: Date;
-
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt!: Date;
+  @OneToMany(() => StockMovement, (stockMovement) => stockMovement.product)
+  stockMovements: StockMovement[];
 }

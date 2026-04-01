@@ -1,21 +1,30 @@
 import {
   IsBoolean,
+  IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
-  MinLength,
 } from 'class-validator';
 
 export class CreateCompanyDto {
   @IsString()
-  @MinLength(2)
-  @MaxLength(100)
-  name!: string;
+  @IsNotEmpty()
+  @MaxLength(150)
+  name: string;
 
-  @IsOptional()
   @IsString()
-  @MaxLength(500)
-  note?: string;
+  @IsNotEmpty()
+  @MaxLength(50)
+  code: string;
+
+  @IsString()
+  @IsNotEmpty()
+  address: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  phone: string;
 
   @IsOptional()
   @IsBoolean()

@@ -3,33 +3,34 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Shop } from '../../shops/entities/shop.entity';
 
 @Entity({ name: 'routes' })
 export class Route {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  @Index('routes_code_unique', { unique: true })
-  @Column({ type: 'varchar', length: 20 })
-  code!: string;
+  @Index({ unique: true })
+  @Column({ length: 150 })
+  name: string;
 
-  @Index('routes_name_unique', { unique: true })
-  @Column({ type: 'varchar', length: 100 })
-  name!: string;
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  area: string | null;
 
-  @Column({ type: 'text', nullable: true })
-  note!: string | null;
+  @Index()
+  @Column({ default: true })
+  isActive: boolean;
 
-  @Index('routes_is_active_idx')
-  @Column({ name: 'is_active', type: 'boolean', default: true })
-  isActive!: boolean;
+  @CreateDateColumn()
+  createdAt: Date;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt!: Date;
+  @UpdateDateColumn()
+  updatedAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt!: Date;
+  @OneToMany(() => Shop, (shop) => shop.route)
+  shops: Shop[];
 }

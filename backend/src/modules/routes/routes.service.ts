@@ -4,8 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
-
+import { Repository } from 'typeorm';
+import { Shop } from '../shops/entities/shop.entity';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { QueryRoutesDto } from './dto/query-routes.dto';
 import { UpdateRouteDto } from './dto/update-route.dto';
@@ -16,114 +16,110 @@ export class RoutesService {
   constructor(
     @InjectRepository(Route)
     private readonly routesRepository: Repository<Route>,
+    @InjectRepository(Shop)
+    private readonly shopsRepository: Repository<Shop>,
   ) {}
 
-  async create(createRouteDto: CreateRouteDto): Promise<Route> {
-    const normalizedCode = createRouteDto.code.trim().toUpperCase();
-    const normalizedName = createRouteDto.name.trim();
-
-    await this.ensureCodeOrNameIsUnique(normalizedCode, normalizedName);
+  async create(createRouteDto: CreateRouteDto) {
+    await this.ensureUniqueName(createRouteDto.name);
 
     const route = this.routesRepository.create({
-      code: normalizedCode,
-      name: normalizedName,
-      note: createRouteDto.note?.trim() || null,
+      ...createRouteDto,
+      area: createRouteDto.area ?? null,
       isActive: createRouteDto.isActive ?? true,
     });
 
     return this.routesRepository.save(route);
   }
 
-  async findAll(queryRoutesDto: QueryRoutesDto): Promise<Route[]> {
+  async findAll(query: QueryRoutesDto) {
     const queryBuilder = this.routesRepository
       .createQueryBuilder('route')
       .orderBy('route.name', 'ASC');
 
-    if (queryRoutesDto.isActive !== undefined) {
-      queryBuilder.andWhere('route.is_active = :isActive', {
-        isActive: queryRoutesDto.isActive,
+    if (query.search) {
+      queryBuilder.andWhere(
+        '(route.name ILIKE :search OR route.area ILIKE :search)',
+        { search: `%${query.search}%` },
+      );
+    }
+
+    if (query.isActive !== undefined) {
+      queryBuilder.andWhere('route.isActive = :isActive', {
+        isActive: query.isActive,
       });
     }
 
     return queryBuilder.getMany();
   }
 
-  async findOne(id: string): Promise<Route> {
+  async findOne(id: number) {
     const route = await this.routesRepository.findOne({
       where: { id },
+      relations: {
+        shops: true,
+      },
     });
 
     if (!route) {
-      throw new NotFoundException('Route not found');
+      throw new NotFoundException('Route not found.');
     }
 
     return route;
   }
 
-  async update(id: string, updateRouteDto: UpdateRouteDto): Promise<Route> {
-    const route = await this.findOne(id);
-    const nextCode = updateRouteDto.code?.trim().toUpperCase();
-    const nextName = updateRouteDto.name?.trim();
+  async update(id: number, updateRouteDto: UpdateRouteDto) {
+    const route = await this.findRouteEntity(id);
 
-    if (
-      (nextCode && nextCode !== route.code) ||
-      (nextName && nextName !== route.name)
-    ) {
-      await this.ensureCodeOrNameIsUnique(
-        nextCode ?? route.code,
-        nextName ?? route.name,
-        id,
-      );
+    if (updateRouteDto.name && updateRouteDto.name !== route.name) {
+      await this.ensureUniqueName(updateRouteDto.name, route.id);
     }
 
-    route.code = nextCode ?? route.code;
-    route.name = nextName ?? route.name;
-    route.note =
-      updateRouteDto.note !== undefined
-        ? updateRouteDto.note?.trim() || null
-        : route.note;
-    route.isActive = updateRouteDto.isActive ?? route.isActive;
+    Object.assign(route, {
+      ...updateRouteDto,
+      area:
+        updateRouteDto.area !== undefined
+          ? (updateRouteDto.area ?? null)
+          : route.area,
+    });
 
     return this.routesRepository.save(route);
   }
 
-  async remove(id: string): Promise<{ message: string }> {
-    const route = await this.findOne(id);
-
-    await this.routesRepository.remove(route);
-
-    return {
-      message: 'Route deleted successfully',
-    };
+  async deactivate(id: number) {
+    const route = await this.findRouteEntity(id);
+    route.isActive = false;
+    return this.routesRepository.save(route);
   }
 
-  private async ensureCodeOrNameIsUnique(
-    code: string,
-    name: string,
-    excludeId?: string,
-  ): Promise<void> {
-    const existingRoute = await this.routesRepository
-      .createQueryBuilder('route')
-      .where(
-        new Brackets((qb) => {
-          qb.where('route.code = :code', { code }).orWhere('route.name = :name', {
-            name,
-          });
-        }),
-      )
-      .andWhere(excludeId ? 'route.id != :excludeId' : '1=1', {
-        excludeId,
-      })
-      .getOne();
+  async listShops(id: number) {
+    await this.findRouteEntity(id);
 
-    if (!existingRoute) {
-      return;
+    return this.shopsRepository.find({
+      where: { routeId: id },
+      order: { name: 'ASC' },
+    });
+  }
+
+  private async ensureUniqueName(name: string, excludeId?: number) {
+    const existingRoute = await this.routesRepository.findOne({
+      where: { name },
+    });
+
+    if (existingRoute && existingRoute.id !== excludeId) {
+      throw new ConflictException('Route name already exists.');
+    }
+  }
+
+  private async findRouteEntity(id: number) {
+    const route = await this.routesRepository.findOne({
+      where: { id },
+    });
+
+    if (!route) {
+      throw new NotFoundException('Route not found.');
     }
 
-    if (existingRoute.code === code) {
-      throw new ConflictException('Route code already exists');
-    }
-
-    throw new ConflictException('Route name already exists');
+    return route;
   }
 }

@@ -2,30 +2,42 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  Index,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Product } from '../../products/entities/product.entity';
+import { StockMovement } from '../../stock/entities/stock-movement.entity';
 
 @Entity({ name: 'companies' })
 export class Company {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  @Index('companies_name_unique', { unique: true })
-  @Column({ type: 'varchar', length: 100 })
-  name!: string;
+  @Column({ length: 150 })
+  name: string;
 
-  @Column({ type: 'text', nullable: true })
-  note!: string | null;
+  @Column({ length: 50, unique: true })
+  code: string;
 
-  @Index('companies_is_active_idx')
-  @Column({ name: 'is_active', type: 'boolean', default: true })
-  isActive!: boolean;
+  @Column({ type: 'text' })
+  address: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt!: Date;
+  @Column({ length: 30 })
+  phone: string;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt!: Date;
+  @Column({ default: true })
+  isActive: boolean;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @OneToMany(() => Product, (product) => product.company)
+  products: Product[];
+
+  @OneToMany(() => StockMovement, (stockMovement) => stockMovement.company)
+  stockMovements: StockMovement[];
 }

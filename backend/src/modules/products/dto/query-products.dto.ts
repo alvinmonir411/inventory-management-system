@@ -3,56 +3,23 @@ import {
   IsBoolean,
   IsInt,
   IsOptional,
+  IsPositive,
   IsString,
-  IsUUID,
-  Max,
-  MaxLength,
-  Min,
 } from 'class-validator';
 
 export class QueryProductsDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
-  page?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number;
+  @IsPositive()
+  companyId?: number;
 
   @IsOptional()
   @IsString()
-  @MaxLength(100)
   search?: string;
 
   @IsOptional()
-  @IsUUID()
-  companyId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  categoryId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  unitId?: string;
-
-  @IsOptional()
-  @Transform(({ value }) => {
-    if (value === 'true') {
-      return true;
-    }
-
-    if (value === 'false') {
-      return false;
-    }
-
-    return value;
-  })
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isActive?: boolean;
 }

@@ -4,12 +4,11 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
 } from '@nestjs/common';
-
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { QueryCompaniesDto } from './dto/query-companies.dto';
@@ -25,25 +24,25 @@ export class CompaniesController {
   }
 
   @Get()
-  findAll(@Query() queryCompaniesDto: QueryCompaniesDto) {
-    return this.companiesService.findAll(queryCompaniesDto);
+  findAll(@Query() query: QueryCompaniesDto) {
+    return this.companiesService.findAll(query);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
+  findOne(@Param('id', ParseIntPipe) id: number) {
     return this.companiesService.findOne(id);
   }
 
   @Patch(':id')
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateCompanyDto: UpdateCompanyDto,
   ) {
     return this.companiesService.update(id, updateCompanyDto);
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) {
+  remove(@Param('id', ParseIntPipe) id: number) {
     return this.companiesService.remove(id);
   }
 }

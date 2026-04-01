@@ -1,19 +1,13 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class QueryRoutesDto {
   @IsOptional()
-  @Transform(({ value }) => {
-    if (value === 'true') {
-      return true;
-    }
+  @IsString()
+  search?: string;
 
-    if (value === 'false') {
-      return false;
-    }
-
-    return value;
-  })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isActive?: boolean;
 }
