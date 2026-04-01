@@ -7,7 +7,11 @@ const navigation = [
   { href: '/', label: 'Dashboard' },
   { href: '/companies', label: 'Companies' },
   { href: '/products', label: 'Products' },
+  { href: '/products/all', label: 'All Products' },
   { href: '/stock', label: 'Stock' },
+  { href: '/routes', label: 'Routes' },
+  { href: '/shops', label: 'Shops' },
+  { href: '/sales', label: 'Sales' },
 ];
 
 export function Sidebar() {
@@ -20,16 +24,21 @@ export function Sidebar() {
           Dealer ERP
         </p>
         <h1 className="mt-3 text-2xl font-semibold text-slate-900">
-          Phase 1 Admin
+          Admin Workspace
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Companies, products, and stock management connected to the backend API.
+          Companies, products, stock, routes, shops, and sales connected to the backend API.
         </p>
       </div>
 
       <nav className="space-y-2">
         {navigation.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive =
+            item.href === '/'
+              ? pathname === item.href
+              : item.href === '/products'
+                ? pathname === item.href
+                : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
             <Link

@@ -9,6 +9,5 @@ export default () => ({
     url: process.env.DATABASE_URL ?? '',
     synchronize: (process.env.DB_SYNCHRONIZE ?? 'false') === 'true',
     dropSchema: (process.env.DB_DROP_SCHEMA ?? 'false') === 'true',
-    seedDemo: (process.env.DB_SEED_DEMO ?? 'true') === 'true',
   },
 });

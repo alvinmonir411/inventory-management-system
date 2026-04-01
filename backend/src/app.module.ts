@@ -7,6 +7,7 @@ import { HealthModule } from './health/health.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { ProductsModule } from './modules/products/products.module';
 import { RoutesModule } from './modules/routes/routes.module';
+import { SalesModule } from './modules/sales/sales.module';
 import { ShopsModule } from './modules/shops/shops.module';
 import { StockModule } from './modules/stock/stock.module';
 
@@ -24,6 +25,7 @@ import { StockModule } from './modules/stock/stock.module';
     CompaniesModule,
     ProductsModule,
     RoutesModule,
+    SalesModule,
     ShopsModule,
     StockModule,
   ],

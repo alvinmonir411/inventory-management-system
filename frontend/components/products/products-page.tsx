@@ -3,11 +3,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { getCompanies } from '@/lib/api/companies';
 import { createProduct, getProducts, updateProduct } from '@/lib/api/products';
+import { getStockSummary } from '@/lib/api/stock';
 import { LoadingBlock } from '@/components/ui/loading-block';
 import { Pagination } from '@/components/ui/pagination';
 import { PageCard } from '@/components/ui/page-card';
 import { StateMessage } from '@/components/ui/state-message';
-import { formatCurrency } from '@/lib/utils/format';
+import { formatCurrency, formatNumber } from '@/lib/utils/format';
 import type { Company, Product, ProductUnit } from '@/types/api';
 
 const unitOptions: ProductUnit[] = [
@@ -33,6 +34,7 @@ const initialFormState = {
 export function ProductsPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [stockByProductId, setStockByProductId] = useState<Record<number, number>>({});
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formState, setFormState] = useState(initialFormState);
@@ -42,6 +44,7 @@ export function ProductsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadInitialData() {
@@ -70,14 +73,23 @@ export function ProductsPage() {
     async function loadProducts() {
       if (!selectedCompanyId) {
         setProducts([]);
+        setStockByProductId({});
         return;
       }
 
       try {
         setIsLoading(true);
         setError(null);
-        const productData = await getProducts(selectedCompanyId, searchTerm);
+        const [productData, stockSummary] = await Promise.all([
+          getProducts(selectedCompanyId, searchTerm),
+          getStockSummary(selectedCompanyId, searchTerm),
+        ]);
         setProducts(productData);
+        setStockByProductId(
+          Object.fromEntries(
+            stockSummary.map((item) => [item.productId, item.currentStock]),
+          ),
+        );
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -125,16 +137,26 @@ export function ProductsPage() {
   async function refreshProducts(companyId: number | null) {
     if (!companyId) {
       setProducts([]);
+      setStockByProductId({});
       return;
     }
 
-    const productData = await getProducts(companyId, searchTerm);
+    const [productData, stockSummary] = await Promise.all([
+      getProducts(companyId, searchTerm),
+      getStockSummary(companyId, searchTerm),
+    ]);
     setProducts(productData);
+    setStockByProductId(
+      Object.fromEntries(
+        stockSummary.map((item) => [item.productId, item.currentStock]),
+      ),
+    );
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
+    setSuccessMessage(null);
 
     if (!formState.companyId) {
       setFormError('Please select a company.');
@@ -156,11 +178,17 @@ export function ProductsPage() {
 
       if (editingProduct) {
         await updateProduct(editingProduct.id, payload);
+        setSuccessMessage(`Product "${payload.name}" updated successfully.`);
       } else {
         await createProduct(payload);
+        setSuccessMessage(`Product "${payload.name}" created successfully.`);
       }
 
       setEditingProduct(null);
+      setFormState({
+        ...initialFormState,
+        companyId: formState.companyId,
+      });
       setCurrentPage(1);
       await refreshProducts(Number(formState.companyId));
     } catch (saveError) {
@@ -222,6 +250,7 @@ export function ProductsPage() {
                   <th className="px-3 py-3 font-medium">Product</th>
                   <th className="px-3 py-3 font-medium">SKU</th>
                   <th className="px-3 py-3 font-medium">Unit</th>
+                  <th className="px-3 py-3 font-medium">Current Stock</th>
                   <th className="px-3 py-3 font-medium">Buy Price</th>
                   <th className="px-3 py-3 font-medium">Sale Price</th>
                   <th className="px-3 py-3 font-medium">Status</th>
@@ -237,6 +266,9 @@ export function ProductsPage() {
                     </td>
                     <td className="px-3 py-4 font-mono text-xs">{product.sku}</td>
                     <td className="px-3 py-4">{product.unit}</td>
+                    <td className="px-3 py-4 font-medium text-slate-900">
+                      {formatNumber(stockByProductId[product.id] ?? 0)}
+                    </td>
                     <td className="px-3 py-4">{formatCurrency(product.buyPrice)}</td>
                     <td className="px-3 py-4">{formatCurrency(product.salePrice)}</td>
                     <td className="px-3 py-4">
@@ -283,7 +315,7 @@ export function ProductsPage() {
 
       <PageCard
         title={editingProduct ? 'Edit Product' : 'Add Product'}
-        description="Use this form to create or update products for the selected company."
+        description="Use this form to create or update products for the selected company. Company stays selected for faster repeated product entry."
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block space-y-2">
@@ -402,6 +434,17 @@ export function ProductsPage() {
             />
             Product is active
           </label>
+
+          <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
+            For bulk product entry, select the company once and keep adding products. The company stays selected after each save.
+          </div>
+
+          {successMessage ? (
+            <StateMessage
+              title="Saved"
+              description={successMessage}
+            />
+          ) : null}
 
           {formError ? (
             <StateMessage

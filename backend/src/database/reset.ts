@@ -5,14 +5,13 @@ import { AppModule } from '../app.module';
 async function bootstrap() {
   process.env.DB_SYNCHRONIZE = 'true';
   process.env.DB_DROP_SCHEMA = 'true';
-  process.env.DB_SEED_DEMO = process.env.DB_SEED_DEMO ?? 'true';
 
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn', 'log'],
   });
 
   Logger.warn(
-    'Database reset completed. Existing schema was dropped, recreated, and demo seed may run if enabled.',
+    'Database reset completed. Existing schema was dropped and recreated without any demo data.',
     'DatabaseReset',
   );
 

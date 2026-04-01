@@ -2,40 +2,43 @@
 
 This repository contains a dealer inventory management system with a NestJS backend and a Next.js frontend.
 
-The project is currently focused on master data and stock flow foundations:
-
-- Backend modules completed:
-  - Companies
-  - Products
-  - Stock
-  - Routes
-  - Shops
-- Frontend pages completed:
-  - Dashboard
-  - Companies
-  - Products
-  - Stock
+The project currently covers real-data-ready master data, stock flow, route/shop setup, and sales flow. Demo seeding has been removed, so the system now starts with an empty schema and is ready for real company, product, shop, route, stock, and sales data.
 
 ## Current Project Status
 
 Completed so far:
 
-- NestJS backend with TypeScript, TypeORM, and PostgreSQL
+- NestJS backend with TypeScript, TypeORM, and PostgreSQL support
 - Next.js frontend with App Router, TypeScript, and Tailwind CSS
-- Database initialization scripts for development
-- Demo seed data for companies, products, stock, routes, and shops
-- Frontend pages connected to backend APIs
-- Product search and pagination
-- Stock search and pagination
+- Safe development database initialization and reset scripts
+- Backend modules:
+  - Companies
+  - Products
+  - Stock
+  - Routes
+  - Shops
+  - Sales
+- Frontend pages:
+  - Dashboard
+  - Companies
+  - Products
+  - All Products
+  - Stock
+  - Routes
+  - Shops
+  - Sales list
+  - Create sale
+  - Sale details
+- Real-data entry flow improvements for companies, routes, shops, products, and sales
+- Full-width admin layout
 
 Planned next:
 
-- Frontend pages for routes and shops
-- Sales flow
-- Due and baki logic
-- Returns
+- Returns flow
+- Due collection flow
 - Reports
-- Safer migration-based schema evolution for production
+- Migration-based database evolution for production
+- Additional dashboard summaries and printing/export workflows
 
 ## Tech Stack
 
@@ -48,25 +51,33 @@ Planned next:
 inventory-management-system/
 ├─ backend/
 │  ├─ src/
+│  │  ├─ common/
 │  │  ├─ config/
 │  │  ├─ database/
 │  │  │  ├─ init.ts
 │  │  │  ├─ reset.ts
-│  │  │  └─ seed/
+│  │  │  └─ typeorm.config.ts
 │  │  ├─ health/
 │  │  └─ modules/
 │  │     ├─ companies/
 │  │     ├─ products/
 │  │     ├─ stock/
 │  │     ├─ routes/
-│  │     └─ shops/
+│  │     ├─ shops/
+│  │     └─ sales/
 │  ├─ .env.example
 │  └─ package.json
 ├─ frontend/
 │  ├─ app/
 │  │  ├─ companies/
 │  │  ├─ products/
+│  │  │  └─ all/
 │  │  ├─ stock/
+│  │  ├─ routes/
+│  │  ├─ shops/
+│  │  ├─ sales/
+│  │  │  ├─ create/
+│  │  │  └─ [id]/
 │  │  ├─ layout.tsx
 │  │  └─ page.tsx
 │  ├─ components/
@@ -74,6 +85,7 @@ inventory-management-system/
 │  ├─ types/
 │  ├─ .env.local.example
 │  └─ package.json
+├─ .gitignore
 └─ README.md
 ```
 
@@ -97,7 +109,7 @@ Create backend env file:
 Copy-Item .env.example .env
 ```
 
-Initialize the development database schema and demo data:
+Initialize the development database schema:
 
 ```powershell
 npm run db:init
@@ -119,6 +131,8 @@ Optional development reset:
 ```powershell
 npm run db:reset
 ```
+
+`db:reset` drops and recreates the schema without any demo data.
 
 ## Frontend Setup
 
@@ -164,13 +178,13 @@ JWT_SECRET=replace-with-a-long-random-secret
 FRONTEND_URL=http://localhost:3000
 DB_SYNCHRONIZE=false
 DB_DROP_SCHEMA=false
-DB_SEED_DEMO=true
 ```
 
 Notes:
 
 - `DB_SYNCHRONIZE` should stay `false` for normal runtime
-- use `npm run db:init` when you need to create tables in development
+- use `npm run db:init` to create tables in development
+- there is no demo seeding anymore
 
 ### Frontend
 
@@ -186,14 +200,24 @@ NEXT_PUBLIC_API_URL=http://localhost:3001/api
   - dashboard layout
   - sidebar
   - topbar
-  - navigation links
+  - full-width admin shell
 - `/companies`
-  - company list from backend
-  - selected company details
+  - company list
+  - company details
+  - add company
+  - edit company
 - `/products`
   - company-wise product list
-  - add product form
-  - edit product form
+  - current stock column
+  - add product
+  - edit product
+  - company filter
+  - search
+  - pagination
+- `/products/all`
+  - all-company product list
+  - current stock column
+  - add product button
   - search
   - pagination
 - `/stock`
@@ -208,26 +232,35 @@ NEXT_PUBLIC_API_URL=http://localhost:3001/api
   - product filter
   - search
   - pagination
-
-## Demo Data
-
-Current demo data includes:
-
-- 5 demo companies
-- about 200 demo products per company
-- opening stock for demo products
-- 7 demo routes
-- demo shops under each route
-
-Demo routes:
-
-- Pirgachha Bazar
-- Chowdhurani
-- Damurchakla
-- Kaliganj
-- Kandirhat
-- Paotanahat
-- Annodanagar
+- `/routes`
+  - route list
+  - add route
+  - edit route
+- `/shops`
+  - shop list
+  - filter by route
+  - add shop
+  - edit shop
+- `/sales`
+  - sales list
+  - filter by company
+  - filter by route
+  - filter by shop
+  - filter by date
+  - today sales summary
+  - today profit summary
+  - monthly sales summary
+  - route-wise sales summary
+  - company-wise sales summary
+- `/sales/create`
+  - create sale with multiple items
+  - live line total and profit calculation
+  - due validation
+  - save and continue next order flow
+- `/sales/[id]`
+  - sale details
+  - item breakdown
+  - totals and profit
 
 ## API Endpoints Implemented So Far
 
@@ -304,12 +337,46 @@ Demo routes:
 - `GET /api/shops/route/:routeId`
   - List shops by route
 
+### Sales APIs
+
+- `POST /api/sales`
+  - Create a sale with multiple items and stock reduction
+- `GET /api/sales`
+  - List sales with optional filters
+- `GET /api/sales/:id`
+  - Get sale details by id
+- `GET /api/sales/summary/today-sales`
+  - Show today sales summary
+- `GET /api/sales/summary/today-profit`
+  - Show today profit summary
+- `GET /api/sales/summary/monthly`
+  - Show monthly sales summary
+- `GET /api/sales/summary/route-wise`
+  - Show route-wise sales summary
+- `GET /api/sales/summary/company-wise`
+  - Show company-wise sales summary
+
+## Business Rules Implemented
+
+- Every product belongs to a company
+- Every stock movement belongs to a company and a product
+- Current stock is derived from stock movements
+- Inactive company or inactive product cannot receive stock movement
+- Shop belongs to a route
+- Inactive route does not accept new shop assignment
+- A sale belongs to one company and one route
+- A sale may belong to one shop
+- If due amount is greater than zero, shop is required
+- Sale creation validates stock before saving
+- Sale creation creates `SALE_OUT` stock movements
+- Sale totals and profits are calculated server-side
+
 ## Local Testing Flow
 
 Recommended local run order:
 
 1. Start PostgreSQL or confirm Neon database access
-2. Run backend database initialization:
+2. Initialize the database:
 
 ```powershell
 cd backend
@@ -335,13 +402,18 @@ npm run dev
 
 Suggested browser test order:
 
-1. Companies page
-2. Products page
-3. Stock page
+1. `/companies`
+2. `/routes`
+3. `/shops`
+4. `/products`
+5. `/stock`
+6. `/sales/create`
+7. `/sales`
 
 ## Notes
 
-- Backend runtime no longer performs destructive schema changes automatically
+- Backend runtime does not perform destructive schema changes automatically
 - Development schema creation is handled with `db:init`
 - Development full reset is handled with `db:reset`
-- Seed runs only after the required tables exist
+- The project no longer creates any demo data
+- The current system is ready for real master data entry

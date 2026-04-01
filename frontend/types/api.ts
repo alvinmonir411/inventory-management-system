@@ -9,6 +9,16 @@ export type Company = {
   updatedAt: string;
 };
 
+export type CreateCompanyPayload = {
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  isActive?: boolean;
+};
+
+export type UpdateCompanyPayload = Partial<CreateCompanyPayload>;
+
 export type ProductUnit = 'PCS' | 'KG' | 'LITER' | 'PACK' | 'DOZEN' | 'OTHER';
 
 export type Product = {
@@ -82,4 +92,150 @@ export type CreateStockMovementPayload = {
   quantity: number;
   note?: string;
   movementDate: string;
+};
+
+export type Route = {
+  id: number;
+  name: string;
+  area: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Shop = {
+  id: number;
+  routeId: number;
+  name: string;
+  ownerName: string | null;
+  phone: string | null;
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  route?: Route;
+};
+
+export type CreateRoutePayload = {
+  name: string;
+  area?: string;
+  isActive?: boolean;
+};
+
+export type UpdateRoutePayload = Partial<CreateRoutePayload>;
+
+export type CreateShopPayload = {
+  routeId: number;
+  name: string;
+  ownerName?: string;
+  phone?: string;
+  address?: string;
+  isActive?: boolean;
+};
+
+export type UpdateShopPayload = Partial<CreateShopPayload>;
+
+export type Sale = {
+  id: number;
+  companyId: number;
+  routeId: number;
+  shopId: number | null;
+  saleDate: string;
+  invoiceNo: string;
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+  totalProfit: number;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  company?: Company;
+  route?: Route;
+  shop?: Shop | null;
+  items?: SaleItem[];
+};
+
+export type SaleItem = {
+  id: number;
+  saleId: number;
+  productId: number;
+  quantity: number;
+  unitPrice: number;
+  buyPrice: number;
+  lineTotal: number;
+  lineProfit: number;
+  createdAt: string;
+  updatedAt: string;
+  product?: Product;
+};
+
+export type CreateSaleItemPayload = {
+  productId: number;
+  quantity: number;
+  unitPrice: number;
+};
+
+export type CreateSalePayload = {
+  companyId: number;
+  routeId: number;
+  shopId?: number;
+  saleDate: string;
+  invoiceNo?: string;
+  paidAmount: number;
+  note?: string;
+  items: CreateSaleItemPayload[];
+};
+
+export type SalesQuery = {
+  companyId?: number;
+  routeId?: number;
+  shopId?: number;
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type TodaySalesSummary = {
+  date: string;
+  saleCount: number;
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+};
+
+export type TodayProfitSummary = {
+  date: string;
+  saleCount: number;
+  totalProfit: number;
+};
+
+export type MonthlySalesSummary = {
+  year: number;
+  month: number;
+  saleCount: number;
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+  totalProfit: number;
+};
+
+export type RouteWiseSalesSummary = {
+  routeId: number;
+  routeName: string;
+  routeArea: string | null;
+  saleCount: number;
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+  totalProfit: number;
+};
+
+export type CompanyWiseSalesSummary = {
+  companyId: number;
+  companyName: string;
+  companyCode: string;
+  saleCount: number;
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+  totalProfit: number;
 };

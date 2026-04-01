@@ -9,7 +9,7 @@ type AdminShellProps = {
 export function AdminShell({ children }: AdminShellProps) {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#e2e8f0_100%)] p-4 md:p-6">
-      <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="grid w-full gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <Sidebar />
         <div className="space-y-6">
           <Topbar />
