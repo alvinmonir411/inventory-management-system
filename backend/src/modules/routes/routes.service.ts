@@ -92,6 +92,17 @@ export class RoutesService {
     return this.routesRepository.save(route);
   }
 
+  async remove(id: number) {
+    const route = await this.findRouteEntity(id);
+    const shopCount = await this.shopsRepository.count({ where: { routeId: id } });
+    if (shopCount > 0) {
+      throw new Error(
+        `Route cannot be deleted because it has ${shopCount} shop(s) assigned to it.`,
+      );
+    }
+    await this.routesRepository.remove(route);
+  }
+
   async listShops(id: number) {
     await this.findRouteEntity(id);
 

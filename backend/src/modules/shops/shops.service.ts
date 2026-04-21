@@ -20,6 +20,8 @@ export class ShopsService {
     private readonly shopsRepository: Repository<Shop>,
     @InjectRepository(Route)
     private readonly routesRepository: Repository<Route>,
+    @InjectRepository(Sale)
+    private readonly salesRepository: Repository<Sale>,
   ) {}
 
   async create(createShopDto: CreateShopDto) {
@@ -135,6 +137,17 @@ export class ShopsService {
     const shop = await this.findOne(id);
     shop.isActive = false;
     return this.shopsRepository.save(shop);
+  }
+
+  async remove(id: number) {
+    const shop = await this.findOne(id);
+    const saleCount = await this.salesRepository.count({ where: { shopId: id } });
+    if (saleCount > 0) {
+      throw new BadRequestException(
+        `Shop cannot be deleted because it has ${saleCount} sale(s) associated with it.`,
+      );
+    }
+    await this.shopsRepository.remove(shop);
   }
 
   async listByRoute(routeId: number) {

@@ -84,7 +84,7 @@ export function DashboardPage() {
           getCompanyWiseSalesSummary(),
           getStockInvestmentSummary(),
           getSales({ page: 1, limit: 5 }),
-          getStockMovements(0, { type: 'DAMAGE' as any })
+          getStockMovements(undefined, { type: 'DAMAGE' })
         ]);
 
         const thisMonthStart = new Date();

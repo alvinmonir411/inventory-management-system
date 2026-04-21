@@ -1,16 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { getSale } from '@/lib/api/sales';
 import { formatCurrency, formatNumber, formatDate } from '@/lib/utils/format';
 import type { Sale } from '@/types/api';
 
-export default function SaleInvoicePage({ params }: { params: { id: string } }) {
+export default function SaleInvoicePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   const [sale, setSale] = useState<Sale | null>(null);
 
   useEffect(() => {
     async function loadSale() {
-      const saleData = await getSale(Number(params.id));
+      const saleData = await getSale(Number(id));
       setSale(saleData);
       
       // Auto-trigger print after a short delay for rendering
@@ -19,7 +24,7 @@ export default function SaleInvoicePage({ params }: { params: { id: string } }) 
       }, 500);
     }
     loadSale();
-  }, [params.id]);
+  }, [id]);
 
   if (!sale) return <div className="p-8 text-center">Loading invoice...</div>;
 
@@ -60,7 +65,7 @@ export default function SaleInvoicePage({ params }: { params: { id: string } }) 
           </tr>
         </thead>
         <tbody>
-          {sale.items.map((item, index) => (
+          {(sale.items ?? []).map((item, index) => (
             <tr key={index} className="border-b border-slate-100 last:border-0">
               <td className="py-4">
                 <p className="font-bold text-slate-900">{item.product?.name}</p>

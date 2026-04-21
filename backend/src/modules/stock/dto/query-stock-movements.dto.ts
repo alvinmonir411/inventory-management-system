@@ -10,10 +10,11 @@ import {
 import { StockMovementType } from '../enums/stock-movement-type.enum';
 
 export class QueryStockMovementsDto {
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @IsPositive()
-  companyId: number;
+  companyId?: number;
 
   @IsOptional()
   @Type(() => Number)

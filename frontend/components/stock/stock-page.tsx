@@ -223,6 +223,7 @@ export function StockPage() {
   const alertsSectionRef = useRef<HTMLDivElement | null>(null);
   const lowStockSectionRef = useRef<HTMLDivElement | null>(null);
   const zeroStockSectionRef = useRef<HTMLDivElement | null>(null);
+  const quickActionSectionRef = useRef<HTMLDivElement | null>(null);
   const hasAutoScrolledRef = useRef(false);
   const latestAutoMatchRequestRef = useRef(0);
   const latestCompanyDataRequestRef = useRef(0);
@@ -244,7 +245,7 @@ export function StockPage() {
   );
   const [fromDate, setFromDate] = useState(searchParams.get('fromDate') ?? '');
   const [toDate, setToDate] = useState(searchParams.get('toDate') ?? '');
-  const [activeAction, setActiveAction] = useState<MovementActionMode | null>(null);
+  const [activeAction, setActiveAction] = useState<MovementActionMode>('stock-in');
   const [openingForm, setOpeningForm] = useState<MovementFormState>(() =>
     createInitialMovementForm(),
   );
@@ -259,10 +260,10 @@ export function StockPage() {
   const [zeroStockPage, setZeroStockPage] = useState(1);
   const [movementPage, setMovementPage] = useState(1);
   const [isCurrentStockOpen, setIsCurrentStockOpen] = useState(
-    () => view === 'company' || view === 'current-stock',
+    () => view === 'company' || view === 'current-stock' || !view,
   );
   const [isMovementHistoryOpen, setIsMovementHistoryOpen] = useState(
-    () => view === 'movements' || view === 'history',
+    () => view === 'movements' || view === 'history' || !view,
   );
   const [isLowStockOpen, setIsLowStockOpen] = useState(
     () => view === 'low-stock' || view === 'alerts',
@@ -547,10 +548,10 @@ export function StockPage() {
   }, [normalizedSearchTerm]);
 
   useEffect(() => {
-    if (activeAction && !selectedCompanyId) {
-      setActiveAction(null);
+    if (!selectedCompanyId) {
+      setActiveAction('stock-in');
     }
-  }, [activeAction, selectedCompanyId]);
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     if (isLoading || error || hasAutoScrolledRef.current) {
@@ -623,9 +624,108 @@ export function StockPage() {
     const startIndex = (movementPage - 1) * movementPageSize;
     return movements.slice(startIndex, startIndex + movementPageSize);
   }, [movementPage, movements]);
+  const totalVisibleQuantity = useMemo(
+    () =>
+      filteredSummary.reduce(
+        (sum, item) => sum + Math.max(Number(item.currentStock) || 0, 0),
+        0,
+      ),
+    [filteredSummary],
+  );
+  const totalVisibleInvestment = useMemo(
+    () =>
+      filteredSummary.reduce(
+        (sum, item) => sum + Math.max(Number(item.investmentValue) || 0, 0),
+        0,
+      ),
+    [filteredSummary],
+  );
+  const activeForm =
+    activeAction === 'opening'
+      ? openingForm
+      : activeAction === 'adjustment'
+        ? adjustmentForm
+        : stockInForm;
+  const activeFormProductId = activeForm.productId ? Number(activeForm.productId) : null;
+  const focusedProduct = useMemo(
+    () =>
+      products.find((product) => product.id === activeFormProductId) ??
+      products.find((product) => product.id === selectedProductId) ??
+      null,
+    [activeFormProductId, products, selectedProductId],
+  );
+  const focusedStockItem = useMemo(
+    () =>
+      summary.find((item) => item.productId === activeFormProductId) ??
+      summary.find((item) => item.productId === selectedProductId) ??
+      null,
+    [activeFormProductId, selectedProductId, summary],
+  );
+  const quickPickProducts = useMemo(() => {
+    const candidateIds = [
+      ...filteredLowStock.map((item) => item.productId),
+      ...filteredSummary.map((item) => item.productId),
+    ];
+    const seen = new Set<number>();
+    const picks: Product[] = [];
+
+    for (const productId of candidateIds) {
+      if (seen.has(productId)) {
+        continue;
+      }
+
+      const product = products.find((entry) => entry.id === productId);
+      if (!product) {
+        continue;
+      }
+
+      seen.add(productId);
+      picks.push(product);
+
+      if (picks.length === 6) {
+        break;
+      }
+    }
+
+    if (picks.length === 0) {
+      return products.slice(0, 6);
+    }
+
+    return picks;
+  }, [filteredLowStock, filteredSummary, products]);
   const todayMovementCount = useMemo(() => {
     const today = new Date();
     return movements.filter((movement) => isSameDay(movement.movementDate, today)).length;
+  }, [movements]);
+  const todayStockInQuantity = useMemo(() => {
+    const today = new Date();
+    return movements.reduce((sum, movement) => {
+      if (!isSameDay(movement.movementDate, today)) {
+        return sum;
+      }
+
+      return movement.type === 'OPENING' || movement.type === 'STOCK_IN' || movement.type === 'RETURN_IN'
+        ? sum + Math.max(Number(movement.quantity) || 0, 0)
+        : sum;
+    }, 0);
+  }, [movements]);
+  const todayStockOutQuantity = useMemo(() => {
+    const today = new Date();
+    return movements.reduce((sum, movement) => {
+      if (!isSameDay(movement.movementDate, today)) {
+        return sum;
+      }
+
+      if (movement.type === 'SALE_OUT') {
+        return sum + Math.abs(Number(movement.quantity) || 0);
+      }
+
+      if (movement.type === 'ADJUSTMENT' && Number(movement.quantity) < 0) {
+        return sum + Math.abs(Number(movement.quantity) || 0);
+      }
+
+      return sum;
+    }, 0);
   }, [movements]);
   const activeFilterCount = [
     normalizedSearchTerm,
@@ -662,7 +762,7 @@ export function StockPage() {
     }, 0);
   }
 
-  function openActionModal(mode: MovementActionMode) {
+  function activateAction(mode: MovementActionMode) {
     if (!selectedCompanyId) {
       setFormError('Select a company first to record stock changes.');
       return;
@@ -670,6 +770,37 @@ export function StockPage() {
 
     setFormError(null);
     setActiveAction(mode);
+  }
+
+  function updateActiveForm(
+    updater: (current: MovementFormState) => MovementFormState,
+  ) {
+    if (activeAction === 'opening') {
+      setOpeningForm(updater);
+      return;
+    }
+
+    if (activeAction === 'adjustment') {
+      setAdjustmentForm(updater);
+      return;
+    }
+
+    setStockInForm(updater);
+  }
+
+  function chooseQuickProduct(productId: number) {
+    setSelectedProductId(productId);
+    updateActiveForm((current) => ({
+      ...current,
+      productId: String(productId),
+    }));
+  }
+
+  function applyQuantityPreset(quantity: string) {
+    updateActiveForm((current) => ({
+      ...current,
+      quantity,
+    }));
   }
 
   function clearWorkspaceFilters() {
@@ -704,6 +835,16 @@ export function StockPage() {
     setMovementPage(1);
     setFromDate(getDateInputValue(monthStart));
     setToDate(getDateInputValue(today));
+  }
+
+  function handleQuickAction(productId: number, mode: MovementActionMode) {
+    if (!selectedCompanyId) {
+      setFormError('Select a company in the filter bar first.');
+      return;
+    }
+    chooseQuickProduct(productId);
+    setActiveAction(mode);
+    globalThis.setTimeout(() => scrollToSection(quickActionSectionRef.current), 0);
   }
 
   async function refreshStockData(companyId: number, productId: number | null) {
@@ -790,7 +931,6 @@ export function StockPage() {
       }
 
       await refreshStockData(selectedCompanyId, selectedProductId);
-      setActiveAction(null);
       openSection(setIsMovementHistoryOpen, movementHistorySectionRef.current);
     } catch (submitError) {
       setFormError(
@@ -806,374 +946,221 @@ export function StockPage() {
   const selectedActionMeta = activeAction ? movementActionMeta[activeAction] : null;
 
   return (
-    <div className="space-y-8">
-      <section className="relative overflow-hidden rounded-[36px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_85%_18%,rgba(59,130,246,0.14),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.18),transparent_30%),linear-gradient(135deg,#ffffff_0%,#f8fafc_48%,#eff6ff_72%,#fff7ed_100%)] p-6 shadow-[0_36px_90px_-56px_rgba(15,23,42,0.45)]">
-        <div className="absolute -right-12 top-0 h-48 w-48 rounded-full bg-cyan-100/70 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-36 w-36 rounded-full bg-amber-100/70 blur-3xl" />
-        <div className="absolute left-10 top-10 h-32 w-32 rounded-full border border-white/70 bg-white/20 blur-2xl" />
-
-        <div className="relative space-y-6">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-3 rounded-full border border-white/80 bg-white/85 px-4 py-2 shadow-sm backdrop-blur">
-                <span className="h-2.5 w-2.5 rounded-full bg-cyan-500" />
-                <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-800">
-                  Inventory command center
-                </p>
+    <div className="space-y-5">
+      {/* ── Dark Hero Banner ── */}
+      <section className="relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#0f172a_0%,#1e293b_55%,#0c1e38_100%)] p-6 shadow-2xl">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_60%,rgba(14,165,233,0.18),transparent_55%)]" />
+        <div className="pointer-events-none absolute right-0 top-0 h-64 w-64 rounded-full bg-cyan-500/5 blur-3xl" />
+        <div className="relative">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/15 px-3 py-1.5">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
+                <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-cyan-300">Stock Command Center</p>
               </div>
-              <h2 className="mt-5 text-4xl font-semibold tracking-tight text-slate-950 sm:text-[2.8rem]">
-                Stock and movement workspace
-              </h2>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
-                Review balances, filter movement history, monitor stock risks, and
-                record stock changes from one focused workspace instead of jumping
-                between separate pages.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    openSection(setIsCurrentStockOpen, currentStockSectionRef.current)
-                  }
-                  className="rounded-full border border-white/80 bg-white/85 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-white"
-                >
-                  Current stock
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    openSection(
-                      setIsMovementHistoryOpen,
-                      movementHistorySectionRef.current,
-                    )
-                  }
-                  className="rounded-full border border-white/80 bg-white/85 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-white"
-                >
-                  Movement history
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsLowStockOpen(true);
-                    setIsZeroStockOpen(true);
-                    globalThis.setTimeout(() => {
-                      scrollToSection(alertsSectionRef.current);
-                    }, 0);
-                  }}
-                  className="rounded-full border border-white/80 bg-white/85 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-white"
-                >
-                  Stock alerts
-                </button>
-                {hasAdvancedFilters ? (
-                  <span className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2.5 text-sm font-medium text-white shadow-sm">
-                    {activeFilterCount} active filters
-                  </span>
-                ) : null}
-              </div>
+              <h1 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">Stock Workspace</h1>
+              <p className="mt-1.5 max-w-lg text-sm leading-6 text-slate-400">Full inventory control — opening stock, stock‑in, adjustments, and live movement history.</p>
             </div>
-
-            <div className="w-full max-w-xl overflow-hidden rounded-[30px] border border-white/80 bg-white/80 p-5 shadow-[0_28px_70px_-42px_rgba(15,23,42,0.35)] backdrop-blur">
-              <div className="flex flex-col gap-4 border-b border-slate-200/70 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
-                    Quick actions
-                  </p>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">
-                    Open a focused popup to record stock changes without pushing the
-                    whole page down.
-                  </p>
-                </div>
-                <div className="rounded-[22px] border border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] px-4 py-3 text-sm shadow-sm">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-                    Action context
-                  </p>
-                  <p className="mt-2 font-semibold text-slate-950">
-                    {selectedCompany?.name ?? 'Select company'}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {selectedCompanyId
-                      ? 'Actions will be recorded for this company'
-                      : 'Choose a company below to unlock stock actions'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                {(Object.keys(movementActionMeta) as MovementActionMode[]).map((mode) => {
-                  const meta = movementActionMeta[mode];
-
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => openActionModal(mode)}
-                      disabled={!selectedCompanyId}
-                      className={`rounded-[24px] border p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_50px_-34px_rgba(15,23,42,0.35)] disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none ${meta.buttonClassName}`}
-                    >
-                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${meta.badgeClassName}`}>
-                        {meta.eyebrow}
-                      </span>
-                      <p className="mt-3 text-base font-semibold">{meta.title}</p>
-                      <p className="mt-2 text-sm leading-6 opacity-80">
-                        {meta.description}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {!selectedCompanyId ? (
-                <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50/90 px-4 py-3 text-sm text-slate-500">
-                  Choose a company in the filters below before adding opening stock,
-                  stock in, or adjustments.
-                </div>
-              ) : null}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => openSection(setIsCurrentStockOpen, currentStockSectionRef.current)} className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white backdrop-blur transition hover:bg-white/20">Current Stock</button>
+              <button type="button" onClick={() => openSection(setIsMovementHistoryOpen, movementHistorySectionRef.current)} className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white backdrop-blur transition hover:bg-white/20">Movements</button>
+              <button type="button" onClick={() => { setIsLowStockOpen(true); setIsZeroStockOpen(true); globalThis.setTimeout(() => scrollToSection(alertsSectionRef.current), 0); }} className={`rounded-full border px-4 py-2 text-xs font-semibold backdrop-blur transition ${filteredLowStock.length + filteredZeroStock.length > 0 ? 'border-amber-400/40 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25' : 'border-white/20 bg-white/10 text-white hover:bg-white/20'}`}>Alerts{filteredLowStock.length + filteredZeroStock.length > 0 ? ` (${filteredLowStock.length + filteredZeroStock.length})` : ''}</button>
+              {hasAdvancedFilters ? <button type="button" onClick={clearWorkspaceFilters} className="rounded-full border border-rose-400/40 bg-rose-400/15 px-4 py-2 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/25">✕ Clear {activeFilterCount}</button> : null}
             </div>
           </div>
-
-          <div className="grid gap-4 lg:grid-cols-4">
-            <HeroStatCard
-              label="Selected company"
-              value={selectedCompany?.name ?? 'All companies'}
-              detail={
-                selectedCompany
-                  ? `${products.length} products available for stock actions`
-                  : 'Alert mode across every company'
-              }
-              toneClassName="bg-[linear-gradient(135deg,#0f172a_0%,#111827_52%,#164e63_100%)] text-white"
-            />
-            <HeroStatCard
-              label="Matching products"
-              value={String(filteredSummary.length)}
-              detail="Filtered by company, product, and keyword"
-              toneClassName="bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_60%,#eef2ff_100%)] text-slate-900"
-            />
-            <HeroStatCard
-              label="Low stock products"
-              value={String(filteredLowStock.length)}
-              detail="Products at or below the alert threshold"
-              toneClassName="bg-[linear-gradient(135deg,#fff8eb_0%,#fffbeb_100%)] text-amber-950"
-            />
-            <HeroStatCard
-              label="Movement matches"
-              value={String(movements.length)}
-              detail={`${todayMovementCount} movement entries from today`}
-              toneClassName="bg-[linear-gradient(135deg,#ecfeff_0%,#f0f9ff_100%)] text-cyan-950"
-            />
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.08] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">Company</p><p className="mt-2 truncate text-lg font-bold text-white">{selectedCompany?.name ?? 'All'}</p><p className="mt-1 text-xs text-slate-500">{products.length} products</p></div>
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-400">Total Qty</p><p className="mt-2 text-lg font-bold text-white">{formatNumber(totalVisibleQuantity)}</p><p className="mt-1 text-xs text-slate-500">Units in stock</p></div>
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-400">Stock Value</p><p className="mt-2 truncate text-lg font-bold text-white">Tk {formatNumber(totalVisibleInvestment)}</p><p className="mt-1 text-xs text-slate-500">Inventory value</p></div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.08] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">Products</p><p className="mt-2 text-lg font-bold text-white">{filteredSummary.length}</p><p className="mt-1 text-xs text-slate-500">Matching filters</p></div>
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/15 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-400">Low Stock</p><p className="mt-2 text-lg font-bold text-amber-100">{filteredLowStock.length}</p><p className="mt-1 text-xs text-slate-500">Need reorder</p></div>
+            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/15 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-400">Zero Stock</p><p className="mt-2 text-lg font-bold text-rose-100">{filteredZeroStock.length}</p><p className="mt-1 text-xs text-slate-500">Out of stock</p></div>
+            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-400">Today</p><p className="mt-2 text-lg font-bold text-white">{todayMovementCount}</p><p className="mt-1 text-xs text-slate-500">+{formatNumber(todayStockInQuantity)} / -{formatNumber(todayStockOutQuantity)}</p></div>
           </div>
         </div>
       </section>
 
-      <PageCard
-        title="Workspace Filters"
-        description="Search stock and movement history together. The old stock movements page is now merged into this workspace, so company, product, keyword, type, and date filters all live here."
-        action={
-          <div className="flex flex-wrap items-center gap-3">
-            <SectionStatusBadge
-              label={
-                hasAdvancedFilters
-                  ? `${activeFilterCount} active workspace filters`
-                  : 'Workspace filters are clean'
-              }
-              toneClassName="border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] text-slate-700"
-              dotClassName={hasAdvancedFilters ? 'bg-slate-900' : 'bg-emerald-500'}
-            />
-            {hasAdvancedFilters ? (
-              <button
-                type="button"
-                onClick={clearWorkspaceFilters}
-                className="rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50"
-              >
-                Clear filters
-              </button>
-            ) : null}
-          </div>
-        }
-      >
-        <div className="overflow-hidden rounded-[30px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.1),transparent_34%),linear-gradient(135deg,#ffffff_0%,#f8fafc_62%,#eef6ff_100%)] p-5 shadow-[0_30px_80px_-52px_rgba(15,23,42,0.42)]">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Filter cockpit
-              </p>
-              <h4 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
-                Search stock and movement history together
-              </h4>
-              <p className="mt-3 text-sm leading-6 text-slate-600">
-                Tune company, product, keyword, movement type, and date range from one control surface, then review the live summaries below without changing pages.
-              </p>
-            </div>
-
-            <div className="rounded-[24px] border border-white/80 bg-white/80 px-5 py-4 shadow-sm backdrop-blur">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-                Current focus
-              </p>
-              <p className="mt-2 text-lg font-semibold text-slate-950">
-                {selectedCompany?.name ?? 'All companies'}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                {selectedProductId
-                  ? 'One product is pinned across stock and movement views.'
-                  : hasMovementFilters
-                    ? 'Movement filters are shaping the history panel now.'
-                    : 'Use the controls below to narrow the workspace instantly.'}
-              </p>
+      {/* ── Sticky Filter Bar ── */}
+      <div className="sticky top-4 z-10">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/92 shadow-lg backdrop-blur-xl">
+          <div className="border-b border-slate-100 px-5 py-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-slate-900">Workspace Filters</span>
+                {hasAdvancedFilters ? (
+                  <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-bold text-white">{activeFilterCount}</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-slate-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Clean</span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <QuickRangeChip label="Today" onClick={applyTodayDateFilter} />
+                <QuickRangeChip label="7 Days" onClick={applyLast7DaysFilter} />
+                <QuickRangeChip label="Month" onClick={applyThisMonthFilter} />
+                {hasAdvancedFilters ? (
+                  <button type="button" onClick={clearWorkspaceFilters} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100">Clear all</button>
+                ) : null}
+              </div>
             </div>
           </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <FilterControlShell
-              label="Keyword search"
-              hint="Search by product, SKU, unit, note, movement type, or company"
-              className="xl:col-span-2"
-            >
-              <input
-                value={searchTerm}
-                onChange={(event) => {
-                  resetPagination();
-                  setSearchTerm(event.target.value);
-                }}
-                placeholder="Start typing to search the full stock workspace"
-                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none shadow-sm transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100"
-              />
-            </FilterControlShell>
-
-            <FilterControlShell
-              label="Company"
-              hint="Choose one company or stay in all-company mode"
-            >
-              <select
-                value={selectedCompanyId ?? ''}
-                onChange={(event) => {
-                  resetPagination();
-                  setSelectedProductId(null);
-                  setSelectedCompanyId(
-                    event.target.value ? Number(event.target.value) : null,
-                  );
-                }}
-                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none shadow-sm transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100"
-              >
+          <div className="grid grid-cols-2 gap-2.5 p-4 md:grid-cols-3 xl:grid-cols-6">
+            <div className="col-span-2 xl:col-span-2">
+              <input value={searchTerm} onChange={(event) => { resetPagination(); setSearchTerm(event.target.value); }} placeholder="Search products, SKU, company..." className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100" />
+            </div>
+            <div>
+              <select value={selectedCompanyId ?? ''} onChange={(event) => { resetPagination(); setSelectedProductId(null); setSelectedCompanyId(event.target.value ? Number(event.target.value) : null); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100">
                 <option value="">All companies</option>
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
-                  </option>
-                ))}
+                {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
               </select>
-            </FilterControlShell>
-
-            <FilterControlShell
-              label="Product"
-              hint={
-                selectedCompanyId
-                  ? 'Limit the workspace to one product'
-                  : 'Pick a company first to unlock product filtering'
-              }
-            >
-              <select
-                value={selectedProductId ?? ''}
-                onChange={(event) => {
-                  resetPagination();
-                  setSelectedProductId(
-                    event.target.value ? Number(event.target.value) : null,
-                  );
-                }}
-                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none shadow-sm transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:bg-slate-100"
-                disabled={!selectedCompanyId}
-              >
+            </div>
+            <div>
+              <select value={selectedProductId ?? ''} onChange={(event) => { resetPagination(); setSelectedProductId(event.target.value ? Number(event.target.value) : null); }} disabled={!selectedCompanyId} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:opacity-60">
                 <option value="">All products</option>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} ({product.unit})
-                  </option>
-                ))}
+                {products.map((product) => <option key={product.id} value={product.id}>{product.name} ({product.unit})</option>)}
               </select>
-            </FilterControlShell>
-
-            <FilterControlShell
-              label="Movement type"
-              hint="Filter the history panel by movement category"
-            >
-              <select
-                value={selectedType}
-                onChange={(event) => {
-                  setMovementPage(1);
-                  setSelectedType(
-                    event.target.value ? (event.target.value as StockMovementType) : '',
-                  );
-                }}
-                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none shadow-sm transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100"
-              >
+            </div>
+            <div>
+              <select value={selectedType} onChange={(event) => { setMovementPage(1); setSelectedType(event.target.value ? (event.target.value as StockMovementType) : ''); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100">
                 <option value="">All types</option>
-                {movementTypeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
+                {movementTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-            </FilterControlShell>
-
-            <FilterControlShell
-              label="From date"
-              hint="Start of the movement date window"
-            >
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(event) => {
-                  setMovementPage(1);
-                  setFromDate(event.target.value);
-                }}
-                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none shadow-sm transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100"
-              />
-            </FilterControlShell>
-
-            <FilterControlShell
-              label="To date"
-              hint="End of the movement date window"
-            >
-              <input
-                type="date"
-                value={toDate}
-                onChange={(event) => {
-                  setMovementPage(1);
-                  setToDate(event.target.value);
-                }}
-                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none shadow-sm transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100"
-              />
-            </FilterControlShell>
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-3">
-            <QuickRangeChip label="Today" onClick={applyTodayDateFilter} />
-            <QuickRangeChip label="Last 7 days" onClick={applyLast7DaysFilter} />
-            <QuickRangeChip label="This month" onClick={applyThisMonthFilter} />
-            {hasMovementFilters ? (
-              <SectionStatusBadge
-                label="Movement filters active"
-                toneClassName="border-slate-900 bg-slate-950 text-white"
-                dotClassName="bg-cyan-400"
-              />
-            ) : null}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="date" value={fromDate} onChange={(event) => { setMovementPage(1); setFromDate(event.target.value); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100" />
+              <input type="date" value={toDate} onChange={(event) => { setMovementPage(1); setToDate(event.target.value); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100" />
+            </div>
           </div>
         </div>
+      </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-3">
-          <FilterNote
-            title="Smart search"
-            description="Keyword search auto-selects the strongest company and product match when it finds a clear stock result."
-          />
-          <FilterNote
-            title="Merged workflow"
-            description="Movement history is now part of this page, so you can search, review, and update stock in one pass."
-          />
-          <FilterNote
-            title="Quick action popups"
-            description="Opening stock, stock in, and adjustments open in focused popups instead of taking over the whole page."
-          />
+      <div ref={quickActionSectionRef}>
+      {/* ── Quick Stock Actions ── */}
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400">Quick Actions</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">Record Stock Movement</h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedCompany ? <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-800"><span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />{selectedCompany.name}</span> : <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">Select a company first</span>}
+              {focusedProduct ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600">{focusedProduct.name}</span> : null}
+            </div>
+          </div>
         </div>
-      </PageCard>
+        <div className="p-6">
+          <div className="mb-5 grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-100/80 p-1.5">
+            {(Object.keys(movementActionMeta) as MovementActionMode[]).map((mode) => {
+              const meta = movementActionMeta[mode];
+              const isActive = activeAction === mode;
+              const accent = mode === 'opening' ? 'text-cyan-600' : mode === 'stock-in' ? 'text-emerald-600' : 'text-amber-600';
+              return (
+                <button key={mode} type="button" onClick={() => activateAction(mode)} disabled={!selectedCompanyId} className={`rounded-[14px] px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${isActive ? 'bg-white text-slate-900 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
+                  <span className={`text-base ${isActive ? accent : ''}`}>{mode === 'opening' ? '◎' : mode === 'stock-in' ? '+' : 'Adj'}</span>
+                  <span className="ml-2">{meta.title}</span>
+                </button>
+              );
+            })}
+          </div>
+          {!selectedCompanyId ? (
+            <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
+              <p className="text-2xl">🏭</p>
+              <p className="mt-3 text-sm font-semibold text-slate-700">Select a company in the filter bar above</p>
+              <p className="mt-1 text-xs text-slate-500">Use the Workspace Filters to pick a company, then return here to record stock movements</p>
+            </div>
+          ) : (
+            <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
+              <div>
+                {activeAction === 'opening' ? <MovementForm products={products} form={openingForm} setForm={setOpeningForm} quantityHint={movementActionMeta.opening.quantityHint} notePlaceholder={movementActionMeta.opening.notePlaceholder} submitLabel={isSubmitting === 'opening' ? 'Saving...' : movementActionMeta.opening.submitLabel} onCancel={() => setActiveAction('stock-in')} onSubmit={(event) => void submitMovement(event, 'opening')} /> : null}
+                {activeAction === 'stock-in' ? <MovementForm products={products} form={stockInForm} setForm={setStockInForm} quantityHint={movementActionMeta['stock-in'].quantityHint} notePlaceholder={movementActionMeta['stock-in'].notePlaceholder} submitLabel={isSubmitting === 'stock-in' ? 'Saving...' : movementActionMeta['stock-in'].submitLabel} onCancel={() => setActiveAction('stock-in')} onSubmit={(event) => void submitMovement(event, 'stock-in')} /> : null}
+                {activeAction === 'adjustment' ? <MovementForm products={products} form={adjustmentForm} setForm={setAdjustmentForm} quantityHint={movementActionMeta.adjustment.quantityHint} notePlaceholder={movementActionMeta.adjustment.notePlaceholder} submitLabel={isSubmitting === 'adjustment' ? 'Saving...' : movementActionMeta.adjustment.submitLabel} onCancel={() => setActiveAction('stock-in')} onSubmit={(event) => void submitMovement(event, 'adjustment')} /> : null}
+              </div>
+              <div className="space-y-3">
+                {/* Product Spotlight */}
+                <div className={`overflow-hidden rounded-2xl border p-4 ${
+                  focusedStockItem?.isZeroStock ? 'border-rose-200 bg-rose-50' :
+                  focusedStockItem?.isLowStock  ? 'border-amber-200 bg-amber-50' :
+                  focusedStockItem ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'
+                }`}>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-slate-400">Product Spotlight</p>
+                  {focusedProduct ? (
+                    <>
+                      <p className="mt-2 text-base font-semibold text-slate-900">{focusedProduct.name}</p>
+                      <p className="mt-0.5 font-mono text-[11px] text-slate-500">SKU: {focusedProduct.sku}</p>
+                      {focusedStockItem ? (
+                        <span className={`mt-2 inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                          focusedStockItem.isZeroStock ? 'bg-rose-100 text-rose-700' :
+                          focusedStockItem.isLowStock  ? 'bg-amber-100 text-amber-700' :
+                          'bg-emerald-100 text-emerald-700'
+                        }`}>
+                          {focusedStockItem.isZeroStock ? 'Out of Stock' : focusedStockItem.isLowStock ? 'Low Stock' : 'Healthy'}
+                        </span>
+                      ) : null}
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="rounded-xl border border-white/80 bg-white/80 p-3 text-center shadow-sm backdrop-blur">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Live Stock</p>
+                          <p className={`mt-1 text-2xl font-bold tabular-nums ${
+                            focusedStockItem?.isZeroStock ? 'text-rose-600' :
+                            focusedStockItem?.isLowStock ? 'text-amber-600' : 'text-emerald-700'
+                          }`}>{formatNumber(focusedStockItem?.currentStock ?? 0)}</p>
+                          <p className="mt-0.5 text-[10px] text-slate-400">{focusedProduct.unit}</p>
+                        </div>
+                        <div className="rounded-xl border border-white/80 bg-white/80 p-3 text-center shadow-sm backdrop-blur">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Value (Tk)</p>
+                          <p className="mt-1 text-lg font-bold text-slate-900">{formatNumber(focusedStockItem?.investmentValue ?? 0)}</p>
+                          <p className="mt-0.5 text-[10px] text-slate-400">@{formatNumber(focusedStockItem?.buyPrice ?? 0)}/unit</p>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-500">Select a product below to see live stock, value, and health status before recording a movement.</p>
+                  )}
+                </div>
 
+                {/* Quick product picks */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Quick Product</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {quickPickProducts.map((product) => {
+                      const stockItem = focusedStockItem?.productId === product.id ? focusedStockItem : null;
+                      return (
+                        <button key={product.id} type="button" onClick={() => chooseQuickProduct(product.id)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${activeForm.productId === String(product.id) ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>
+                          {product.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Quick quantity */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Quick Qty</p>
+                  <div className="mt-2 grid grid-cols-4 gap-1.5">
+                    {['1','5','10','20','50','100','250','500'].map((v) => (
+                      <button key={v} type="button" onClick={() => applyQuantityPreset(v)}
+                        className={`rounded-xl py-2 text-sm font-semibold transition ${activeForm.quantity === v ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                  {activeAction === 'adjustment' ? (
+                    <div className="mt-2 grid grid-cols-4 gap-1.5">
+                      {['-1','-5','-10','-20'].map((v) => (
+                        <button key={v} type="button" onClick={() => applyQuantityPreset(v)}
+                          className={`rounded-xl py-2 text-xs font-semibold transition ${activeForm.quantity === v ? 'bg-amber-600 text-white' : 'border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'}`}>
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+      </div>
       {error ? (
         <StateMessage
           title="Stock workspace needs attention"
@@ -1206,7 +1193,7 @@ export function StockPage() {
         >
           {isCurrentStockOpen ? (
             <>
-              <StockSummaryTable items={paginatedSummary} />
+              <StockSummaryTable items={paginatedSummary} onQuickAction={handleQuickAction} />
               <Pagination
                 currentPage={summaryPage}
                 totalItems={filteredSummary.length}
@@ -1296,7 +1283,7 @@ export function StockPage() {
           >
             {isLowStockOpen ? (
               <>
-                <StockSummaryTable items={paginatedLowStock} />
+                <StockSummaryTable items={paginatedLowStock} onQuickAction={handleQuickAction} />
                 <Pagination
                   currentPage={lowStockPage}
                   totalItems={filteredLowStock.length}
@@ -1335,7 +1322,7 @@ export function StockPage() {
           >
             {isZeroStockOpen ? (
               <>
-                <StockSummaryTable items={paginatedZeroStock} />
+                <StockSummaryTable items={paginatedZeroStock} onQuickAction={handleQuickAction} />
                 <Pagination
                   currentPage={zeroStockPage}
                   totalItems={filteredZeroStock.length}
@@ -1353,95 +1340,6 @@ export function StockPage() {
         </div>
       </div>
 
-      <ModalShell
-        isOpen={Boolean(activeAction && selectedActionMeta)}
-        title={selectedActionMeta?.title ?? ''}
-        description={selectedActionMeta?.description ?? ''}
-        onClose={() => {
-          if (!isSubmitting) {
-            setActiveAction(null);
-          }
-        }}
-      >
-        {activeAction && selectedActionMeta ? (
-          <div className="space-y-5">
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${selectedActionMeta.badgeClassName}`}>
-                    {selectedActionMeta.eyebrow}
-                  </span>
-                  <p className="mt-3 text-lg font-semibold text-slate-900">
-                    {selectedCompany?.name ?? 'No company selected'}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    {selectedActionMeta.description}
-                  </p>
-                </div>
-                {selectedProductId && products.some((product) => product.id === selectedProductId) ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                    Focus product:{' '}
-                    <span className="font-semibold text-slate-900">
-                      {products.find((product) => product.id === selectedProductId)?.name}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            {activeAction === 'opening' ? (
-              <MovementForm
-                products={products}
-                form={openingForm}
-                setForm={setOpeningForm}
-                quantityHint={movementActionMeta.opening.quantityHint}
-                notePlaceholder={movementActionMeta.opening.notePlaceholder}
-                submitLabel={
-                  isSubmitting === 'opening'
-                    ? 'Saving...'
-                    : movementActionMeta.opening.submitLabel
-                }
-                onCancel={() => setActiveAction(null)}
-                onSubmit={(event) => void submitMovement(event, 'opening')}
-              />
-            ) : null}
-
-            {activeAction === 'stock-in' ? (
-              <MovementForm
-                products={products}
-                form={stockInForm}
-                setForm={setStockInForm}
-                quantityHint={movementActionMeta['stock-in'].quantityHint}
-                notePlaceholder={movementActionMeta['stock-in'].notePlaceholder}
-                submitLabel={
-                  isSubmitting === 'stock-in'
-                    ? 'Saving...'
-                    : movementActionMeta['stock-in'].submitLabel
-                }
-                onCancel={() => setActiveAction(null)}
-                onSubmit={(event) => void submitMovement(event, 'stock-in')}
-              />
-            ) : null}
-
-            {activeAction === 'adjustment' ? (
-              <MovementForm
-                products={products}
-                form={adjustmentForm}
-                setForm={setAdjustmentForm}
-                quantityHint={movementActionMeta.adjustment.quantityHint}
-                notePlaceholder={movementActionMeta.adjustment.notePlaceholder}
-                submitLabel={
-                  isSubmitting === 'adjustment'
-                    ? 'Saving...'
-                    : movementActionMeta.adjustment.submitLabel
-                }
-                onCancel={() => setActiveAction(null)}
-                onSubmit={(event) => void submitMovement(event, 'adjustment')}
-              />
-            ) : null}
-          </div>
-        ) : null}
-      </ModalShell>
     </div>
   );
 }
@@ -1760,401 +1658,189 @@ function MovementForm({
 }: MovementFormProps) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <label className="block space-y-2">
-        <span className="text-sm font-medium text-slate-700">Product</span>
-        <select
-          value={form.productId}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, productId: event.target.value }))
-          }
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white"
-        >
-          <option value="">Select product</option>
-          {products.map((product) => (
-            <option key={product.id} value={product.id}>
-              {product.name} ({product.unit})
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="block space-y-2">
-        <span className="text-sm font-medium text-slate-700">Quantity</span>
-        <input
-          type="number"
-          step="0.001"
-          value={form.quantity}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, quantity: event.target.value }))
-          }
-          placeholder="Enter quantity"
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white"
-        />
-        <p className="text-xs leading-5 text-slate-500">{quantityHint}</p>
-      </label>
-
-      <label className="block space-y-2">
-        <span className="text-sm font-medium text-slate-700">Movement date</span>
-        <input
-          type="datetime-local"
-          value={form.movementDate}
-          onChange={(event) =>
-            setForm((current) => ({
-              ...current,
-              movementDate: event.target.value,
-            }))
-          }
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white"
-        />
-      </label>
-
-      <label className="block space-y-2">
-        <span className="text-sm font-medium text-slate-700">Note</span>
-        <textarea
-          value={form.note}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, note: event.target.value }))
-          }
-          rows={4}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white"
-          placeholder={notePlaceholder}
-        />
-      </label>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-        >
-          {submitLabel}
-        </button>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="block space-y-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Product</span>
+          <select
+            value={form.productId}
+            onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100"
+          >
+            <option value="">Select product</option>
+            {products.map((product) => (
+              <option key={product.id} value={product.id}>{product.name} ({product.unit})</option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Movement Date</span>
+          <input
+            type="datetime-local"
+            value={form.movementDate}
+            onChange={(event) => setForm((current) => ({ ...current, movementDate: event.target.value }))}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100"
+          />
+        </label>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="block space-y-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Quantity</span>
+          <input
+            type="number"
+            step="0.001"
+            value={form.quantity}
+            onChange={(event) => setForm((current) => ({ ...current, quantity: event.target.value }))}
+            placeholder="Enter quantity"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100"
+          />
+          <p className="text-xs text-slate-400">{quantityHint}</p>
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Note</span>
+          <textarea
+            value={form.note}
+            onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
+            rows={3}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100"
+            placeholder={notePlaceholder}
+          />
+        </label>
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+        <p className="text-xs text-slate-400">Review all fields before saving.</p>
+        <div className="flex gap-2">
+          <button type="button" onClick={onCancel} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50">Cancel</button>
+          <button type="submit" className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700">{submitLabel}</button>
+        </div>
       </div>
     </form>
   );
 }
 
-function StockSummaryTable({ items }: { items: StockSummaryItem[] }) {
+function StockSummaryTable({
+  items,
+  onQuickAction,
+}: {
+  items: StockSummaryItem[];
+  onQuickAction?: (productId: number, mode: MovementActionMode) => void;
+}) {
   if (items.length === 0) {
     return (
       <StateMessage
         title="No products to show"
-        description="Try another company or widen the filters. Stock items appear here as soon as movements exist for the matching products."
+        description="Try another company or widen the filters."
       />
     );
   }
 
-  const activeItems = items.filter((item) => item.isActive).length;
   const lowStockItems = items.filter((item) => item.isLowStock).length;
   const zeroStockItems = items.filter((item) => item.isZeroStock).length;
-  const inventoryStatusTitle =
-    zeroStockItems > 0
-      ? 'Stockout risk is live'
-      : lowStockItems > 0
-        ? 'Reorder watch is active'
-        : 'Inventory looks healthy';
-  const inventoryStatusDescription =
-    zeroStockItems > 0
-      ? `${zeroStockItems} product${zeroStockItems === 1 ? '' : 's'} already hit zero and should be refilled first.`
-      : lowStockItems > 0
-        ? `${lowStockItems} product${lowStockItems === 1 ? '' : 's'} need a reorder soon while the rest of the catalog stays sell-ready.`
-        : `All ${activeItems} active product${activeItems === 1 ? '' : 's'} are sitting in a comfortable stock range.`;
+  const totalQty = items.reduce((s, i) => s + Math.max(Number(i.currentStock) || 0, 0), 0);
+  const totalValue = items.reduce((s, i) => s + Math.max(Number(i.investmentValue) || 0, 0), 0);
 
   return (
-    <div className="space-y-5">
-      <div className="overflow-hidden rounded-[30px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_34%),linear-gradient(135deg,#ffffff_0%,#f8fafc_52%,#eef2ff_100%)] p-5 shadow-[0_30px_80px_-48px_rgba(15,23,42,0.55)]">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-              Inventory pulse
-            </p>
-            <h4 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
-              Live stock snapshot
-            </h4>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Review the products in view, confirm the live balance, and spot reorder pressure before you open another stock action popup.
-            </p>
-          </div>
-
-          <div className="rounded-[24px] border border-white/80 bg-white/80 px-5 py-4 shadow-sm backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-              Focus status
-            </p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">
-              {inventoryStatusTitle}
-            </p>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
-              {inventoryStatusDescription}
-            </p>
-          </div>
+    <div className="space-y-3">
+      {/* Mini summary bar */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-xl bg-slate-50 p-3 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Products</p>
+          <p className="mt-1 text-xl font-bold text-slate-900">{items.length}</p>
         </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StockSummaryMetric
-          label="Products in view"
-          value={String(items.length)}
-          detail="Visible in the current filter set"
-          surfaceClassName="bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)]"
-          valueClassName="text-slate-950"
-          dotClassName="bg-slate-500"
-        />
-        <StockSummaryMetric
-          label="Active products"
-          value={String(activeItems)}
-          detail="Currently marked as active in the catalog"
-          surfaceClassName="bg-[linear-gradient(135deg,#ecfdf5_0%,#f0fdf4_100%)]"
-          valueClassName="text-emerald-900"
-          dotClassName="bg-emerald-500"
-        />
-        <StockSummaryMetric
-          label="Low stock"
-          value={String(lowStockItems)}
-          detail={
-            lowStockItems > 0 ? 'Needs reorder follow-up soon' : 'No low stock alerts in view'
-          }
-          surfaceClassName="bg-[linear-gradient(135deg,#fff8eb_0%,#fffbeb_100%)]"
-          valueClassName="text-amber-900"
-          dotClassName="bg-amber-500"
-        />
-        <StockSummaryMetric
-          label="Zero stock"
-          value={String(zeroStockItems)}
-          detail={
-            zeroStockItems > 0
-              ? 'Immediate refill priority'
-              : 'No products are fully out right now'
-          }
-          surfaceClassName="bg-[linear-gradient(135deg,#fff1f2_0%,#fff5f7_100%)]"
-          valueClassName="text-rose-900"
-          dotClassName="bg-rose-500"
-        />
+        <div className="rounded-xl bg-cyan-50 p-3 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-500">Total Qty</p>
+          <p className="mt-1 text-xl font-bold text-cyan-900">{formatNumber(totalQty)}</p>
+        </div>
+        <div className={`rounded-xl p-3 text-center ${lowStockItems > 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
+          <p className={`text-[10px] font-bold uppercase tracking-wider ${lowStockItems > 0 ? 'text-amber-500' : 'text-slate-400'}`}>Low Stock</p>
+          <p className={`mt-1 text-xl font-bold ${lowStockItems > 0 ? 'text-amber-900' : 'text-slate-400'}`}>{lowStockItems}</p>
+        </div>
+        <div className={`rounded-xl p-3 text-center ${zeroStockItems > 0 ? 'bg-rose-50' : 'bg-slate-50'}`}>
+          <p className={`text-[10px] font-bold uppercase tracking-wider ${zeroStockItems > 0 ? 'text-rose-500' : 'text-slate-400'}`}>Zero Stock</p>
+          <p className={`mt-1 text-xl font-bold ${zeroStockItems > 0 ? 'text-rose-900' : 'text-slate-400'}`}>{zeroStockItems}</p>
         </div>
       </div>
 
-      <div className="grid gap-3 md:hidden">
-        {items.map((item) => {
-          const stockToneClassName = getStockToneClassName(item);
+      {/* Compact table */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* Header */}
+        <div className="grid grid-cols-[2fr_1fr_0.6fr_1.1fr_1fr_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+          <div>Product / SKU</div>
+          <div>Company</div>
+          <div>Unit</div>
+          <div>Live Stock</div>
+          <div>Value</div>
+          <div className="w-24 text-right">Actions</div>
+        </div>
 
-          return (
+        {/* Rows */}
+        <div className="divide-y divide-slate-100">
+          {items.map((item) => (
             <div
               key={item.productId}
-              className="relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_60%,#ffffff_100%)] p-5 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.55)]"
+              className={`grid grid-cols-[2fr_1fr_0.6fr_1.1fr_1fr_auto] items-center gap-3 px-4 py-3 transition hover:bg-slate-50/60 ${
+                item.isZeroStock
+                  ? 'border-l-[3px] border-rose-400'
+                  : item.isLowStock
+                    ? 'border-l-[3px] border-amber-400'
+                    : 'border-l-[3px] border-transparent'
+              }`}
             >
-              <div
-                className={`absolute inset-x-0 top-0 h-24 opacity-80 ${getStockAuraClassName(item)}`}
-              />
-
-              <div className="relative">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex gap-3">
-                    <div
-                      className={`mt-1 h-12 w-1.5 rounded-full ${getStockAccentBarClassName(item)}`}
-                    />
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                        Product #{item.productId}
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-slate-950">
-                        {item.productName}
-                      </p>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">
-                        {getStockStateSupportCopy(item)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`min-w-[132px] rounded-[24px] border border-white/70 px-4 py-3 text-right shadow-sm ${stockToneClassName}`}
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-75">
-                      Available
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight">
-                      {formatNumber(item.currentStock)}
-                    </p>
-                    <div className="mt-3 h-2 rounded-full bg-white/60">
-                      <div
-                        className={`h-2 rounded-full ${getStockMeterClassName(item)}`}
-                        style={{ width: getStockMeterWidth(item) }}
-                      />
-                    </div>
-                  </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">{item.productName}</p>
+                <p className="mt-0.5 font-mono text-[11px] text-slate-400">{item.sku}</p>
+              </div>
+              <div>
+                <p className="truncate text-xs font-semibold text-slate-700">{item.company?.name ?? '--'}</p>
+                <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">{item.company?.code ?? '--'}</span>
+              </div>
+              <div>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{item.unit}</span>
+              </div>
+              <div>
+                <p className={`text-lg font-bold tabular-nums ${item.isZeroStock ? 'text-rose-600' : item.isLowStock ? 'text-amber-600' : 'text-emerald-700'}`}>
+                  {formatNumber(item.currentStock)}
+                </p>
+                <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100">
+                  <div className={`h-1.5 rounded-full ${getStockMeterClassName(item)}`} style={{ width: getStockMeterWidth(item) }} />
                 </div>
-
-                <div className="mt-4 grid gap-3">
-                  <div className="rounded-[24px] border border-white/70 bg-white/80 px-4 py-4 shadow-sm backdrop-blur">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Company
-                    </p>
-                    <p className="mt-2 font-semibold text-slate-950">
-                      {item.company?.name ?? `Company #${item.companyId}`}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {item.company?.code ?? 'No company code'}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-[24px] border border-slate-200/80 bg-white px-4 py-4 shadow-sm">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        SKU
-                      </p>
-                      <p className="mt-2 font-mono text-xs text-slate-700">{item.sku}</p>
-                    </div>
-                    <div className="rounded-[24px] border border-slate-200/80 bg-white px-4 py-4 shadow-sm">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Unit
-                      </p>
-                      <p className="mt-2 font-semibold text-slate-950">{item.unit}</p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[24px] border border-slate-200/80 bg-white px-4 py-4 shadow-sm">
-                    <div className="flex flex-wrap gap-2">
-                      <StockFlagBadge
-                        label={item.isActive ? 'Active' : 'Inactive'}
-                        toneClassName={
-                          item.isActive
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-rose-100 text-rose-700'
-                        }
-                      />
-                      <StockFlagBadge
-                        label={getStockStateLabel(item)}
-                        toneClassName={getStockStateBadgeClassName(item)}
-                      />
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-500">
-                      {getStockStateSupportCopy(item)}
-                    </p>
-                  </div>
-                </div>
+                <span className={`mt-0.5 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${getStockStateBadgeClassName(item)}`}>
+                  {getStockStateLabel(item)}
+                </span>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-700">BDT {formatNumber(item.investmentValue)}</p>
+                <p className="text-[10px] text-slate-400">@{formatNumber(item.buyPrice)}/unit</p>
+              </div>
+              <div className="flex w-24 flex-shrink-0 flex-col items-end gap-1">
+                {onQuickAction ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onQuickAction(item.productId, 'stock-in')}
+                      className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+                    >
+                      Stock In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onQuickAction(item.productId, 'adjustment')}
+                      className="w-full rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-700 transition hover:bg-amber-100"
+                    >
+                      Adjust
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
 
-      <div className="hidden md:block">
-        <div className="overflow-hidden rounded-[30px] border border-slate-200/80 bg-white shadow-[0_28px_70px_-48px_rgba(15,23,42,0.5)]">
-          <div className="grid grid-cols-[1.35fr_1fr_0.95fr_0.95fr_1fr] gap-4 border-b border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#eff6ff_100%)] px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-            <div>Product</div>
-            <div>Company</div>
-            <div>Catalog</div>
-            <div>Live Stock</div>
-            <div>Health</div>
-          </div>
-
-          <div className="space-y-3 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4">
-            {items.map((item) => {
-              const stockToneClassName = getStockToneClassName(item);
-
-              return (
-                <div
-                  key={item.productId}
-                  className="grid grid-cols-[1.35fr_1fr_0.95fr_0.95fr_1fr] gap-4 rounded-[26px] border border-slate-200/80 bg-white p-4 shadow-[0_18px_50px_-36px_rgba(15,23,42,0.45)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_70px_-38px_rgba(15,23,42,0.45)]"
-                >
-                  <div className="flex gap-3">
-                    <div
-                      className={`mt-1 h-14 w-1.5 rounded-full ${getStockAccentBarClassName(item)}`}
-                    />
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                        Product #{item.productId}
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-slate-950">
-                        {item.productName}
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-slate-500">
-                        {getStockStateSupportCopy(item)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-950">
-                        {item.company?.name ?? `Company #${item.companyId}`}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {item.company?.code ?? 'No company code'}
-                      </p>
-                    </div>
-                    <StockFlagBadge
-                      label={item.isActive ? 'Active catalog' : 'Inactive catalog'}
-                      toneClassName={
-                        item.isActive
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-rose-100 text-rose-700'
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        SKU
-                      </p>
-                      <p className="mt-2 font-mono text-xs text-slate-700">{item.sku}</p>
-                    </div>
-                    <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Unit
-                      </p>
-                      <p className="mt-2 font-semibold text-slate-950">{item.unit}</p>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`rounded-[24px] border border-white/70 px-4 py-4 shadow-sm ${stockToneClassName}`}
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-75">
-                      Available
-                    </p>
-                    <p className="mt-2 text-3xl font-semibold tracking-tight">
-                      {formatNumber(item.currentStock)}
-                    </p>
-                    <div className="mt-4 h-2 rounded-full bg-white/60">
-                      <div
-                        className={`h-2 rounded-full ${getStockMeterClassName(item)}`}
-                        style={{ width: getStockMeterWidth(item) }}
-                      />
-                    </div>
-                    <p className="mt-3 text-sm opacity-80">
-                      {item.isZeroStock
-                        ? 'Refill before the next movement cycle.'
-                        : item.isLowStock
-                          ? 'Approaching the reorder line.'
-                          : 'Balance looks strong for daily activity.'}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col justify-between gap-4">
-                    <div className="flex flex-wrap gap-2">
-                        <StockFlagBadge
-                        label={getStockStateLabel(item)}
-                        toneClassName={getStockStateBadgeClassName(item)}
-                      />
-                      {item.company?.code ? (
-                        <StockFlagBadge
-                          label={item.company.code}
-                          toneClassName="bg-slate-100 text-slate-700"
-                        />
-                      ) : null}
-                    </div>
-                    <p className="text-sm leading-6 text-slate-500">
-                      {getStockStateSupportCopy(item)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+        {/* Footer totals */}
+        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-4 py-3">
+          <p className="text-xs text-slate-400">{items.length} product{items.length === 1 ? '' : 's'} shown</p>
+          <div className="flex gap-6 text-xs">
+            <div><span className="text-slate-400">Total Qty: </span><span className="font-bold text-slate-900">{formatNumber(totalQty)}</span></div>
+            <div><span className="text-slate-400">Value: </span><span className="font-bold text-slate-900">Tk {formatNumber(totalValue)}</span></div>
           </div>
         </div>
       </div>

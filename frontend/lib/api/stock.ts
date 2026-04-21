@@ -36,7 +36,7 @@ export function getStockInvestmentSummary(companyId?: number, search?: string) {
 }
 
 export function getStockMovements(
-  companyId: number,
+  companyId?: number,
   query: StockMovementQuery = {},
 ) {
   return apiRequest<StockMovement[]>('stock/movements', {

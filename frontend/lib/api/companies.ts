@@ -22,3 +22,9 @@ export function updateCompany(id: number, payload: UpdateCompanyPayload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function deleteCompany(id: number) {
+  return apiRequest<void>(`companies/${id}`, {
+    method: 'DELETE',
+  });
+}

@@ -2,21 +2,20 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { getCompanies } from '@/lib/api/companies';
 import { getProducts } from '@/lib/api/products';
 import { getRoutes } from '@/lib/api/routes';
 import { createSale } from '@/lib/api/sales';
-import { getShops } from '@/lib/api/shops';
+import { createShop, getShops } from '@/lib/api/shops';
 import { getStockSummary } from '@/lib/api/stock';
 import { LoadingBlock } from '@/components/ui/loading-block';
 import { useAuth } from '../auth/auth-provider';
 import { canViewProfit, canSeeBuyPrice } from '@/lib/utils/permissions';
 import { PageCard } from '@/components/ui/page-card';
 import { useToastNotification } from '@/components/ui/toast-provider';
-import { formatCurrency } from '@/lib/utils/format';
-import { formatDate } from '@/lib/utils/format';
-import type { Company, Product, Route, Sale, Shop } from '@/types/api';
+import { formatCurrency, formatDate, formatNumber } from '@/lib/utils/format';
+import type { Company, CreateShopPayload, Product, Route, Sale, Shop } from '@/types/api';
 
 type SaleItemForm = {
   id: string;
@@ -30,6 +29,13 @@ type SaleItemForm = {
 };
 
 type PaymentMode = 'full' | 'due';
+
+type ShopForm = {
+  name: string;
+  ownerName: string;
+  phone: string;
+  address: string;
+};
 
 const initialItem = (): SaleItemForm => ({
   id: `${Date.now()}-${Math.random()}`,
@@ -145,6 +151,16 @@ export function CreateSalePage() {
   const [companyId, setCompanyId] = useState('');
   const [routeId, setRouteId] = useState('');
   const [shopId, setShopId] = useState('');
+  const [isCreateShopOpen, setIsCreateShopOpen] = useState(false);
+  const [isCreatingShop, setIsCreatingShop] = useState(false);
+  const [shopFormError, setShopFormError] = useState<string | null>(null);
+  const [shopSuccessMessage, setShopSuccessMessage] = useState<string | null>(null);
+  const [shopForm, setShopForm] = useState<ShopForm>({
+    name: '',
+    ownerName: '',
+    phone: '',
+    address: '',
+  });
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 16));
   const [invoiceNo, setInvoiceNo] = useState('');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('full');
@@ -175,6 +191,16 @@ export function CreateSalePage() {
   useToastNotification({
     message: successMessage,
     title: 'Sale created',
+    tone: 'success',
+  });
+  useToastNotification({
+    message: shopFormError,
+    title: 'Could not create shop',
+    tone: 'error',
+  });
+  useToastNotification({
+    message: shopSuccessMessage,
+    title: 'Shop created',
     tone: 'success',
   });
 
@@ -281,21 +307,31 @@ export function CreateSalePage() {
     void loadCompanyProducts();
   }, [companyId]);
 
+  async function refreshRouteShops(nextRouteId: string, selectedShopId?: string) {
+    if (!nextRouteId) {
+      setShops([]);
+      setShopId('');
+      return;
+    }
+
+    const shopData = await getShops(Number(nextRouteId));
+    setShops(shopData);
+
+    const preferredShopId = selectedShopId ?? shopId;
+    if (preferredShopId && shopData.some((shop) => shop.id === Number(preferredShopId))) {
+      setShopId(preferredShopId);
+      return;
+    }
+
+    if (preferredShopId) {
+      setShopId('');
+    }
+  }
+
   useEffect(() => {
     async function loadRouteShops() {
-      if (!routeId) {
-        setShops([]);
-        setShopId('');
-        return;
-      }
-
       try {
-        const shopData = await getShops(Number(routeId));
-        setShops(shopData);
-
-        if (shopId && !shopData.some((shop) => shop.id === Number(shopId))) {
-          setShopId('');
-        }
+        await refreshRouteShops(routeId);
       } catch (loadError) {
         setFormError(
           loadError instanceof Error
@@ -306,7 +342,7 @@ export function CreateSalePage() {
     }
 
     void loadRouteShops();
-  }, [routeId, shopId]);
+  }, [routeId]);
 
   const companyById = useMemo(
     () => new Map(companies.map((company) => [company.id, company])),
@@ -448,6 +484,7 @@ export function CreateSalePage() {
     setPaidAmount('0.00');
     setNote('');
     setShopId('');
+    setIsCreateShopOpen(false);
     setItems(buildFreshItems());
     setSuccessMessage(
       `Sale ${createdSale.invoiceNo} created. You can now enter the next order.`,
@@ -471,6 +508,11 @@ export function CreateSalePage() {
 
     if (totalAmount <= 0) {
       setFormError('Add at least one sale item with valid quantity and price.');
+      return;
+    }
+
+    if (mode === 'print' && !shopId) {
+      setFormError('Select a shop before generating the invoice.');
       return;
     }
 
@@ -535,6 +577,51 @@ export function CreateSalePage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await submitSale('details');
+  }
+
+  async function handleCreateShop(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setShopFormError(null);
+    setShopSuccessMessage(null);
+
+    if (!routeId) {
+      setShopFormError('Select a route before creating a shop.');
+      return;
+    }
+
+    if (!shopForm.name.trim()) {
+      setShopFormError('Shop name is required.');
+      return;
+    }
+
+    try {
+      setIsCreatingShop(true);
+
+      const payload: CreateShopPayload = {
+        routeId: Number(routeId),
+        name: shopForm.name.trim(),
+        ownerName: shopForm.ownerName.trim() || undefined,
+        phone: shopForm.phone.trim() || undefined,
+        address: shopForm.address.trim() || undefined,
+      };
+
+      const createdShop = await createShop(payload);
+      await refreshRouteShops(routeId, String(createdShop.id));
+      setIsCreateShopOpen(false);
+      setShopForm({
+        name: '',
+        ownerName: '',
+        phone: '',
+        address: '',
+      });
+      setShopSuccessMessage(`${createdShop.name} is ready and selected for this sale.`);
+    } catch (createError) {
+      setShopFormError(
+        createError instanceof Error ? createError.message : 'Failed to create shop.',
+      );
+    } finally {
+      setIsCreatingShop(false);
+    }
   }
 
   function activateFullPaidMode() {
@@ -607,149 +694,353 @@ export function CreateSalePage() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-700">Company</span>
-                <select
-                  value={companyId}
-                  onChange={(event) => setCompanyId(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-                >
-                  <option value="">Select company</option>
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.id}>
-                      {company.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] xl:items-start">
+              <div className="space-y-6">
+                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="mb-6">
+                    <h3 className="text-xl font-semibold text-slate-900">Create Sale</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Choose company, route, shop, payment, and invoice settings before adding items.
+                    </p>
+                  </div>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-700">Route</span>
-                <select
-                  value={routeId}
-                  onChange={(event) => setRouteId(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-                >
-                  <option value="">Select route</option>
-                  {routes.map((route) => (
-                    <option key={route.id} value={route.id}>
-                      {route.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <div className="space-y-6">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Company</span>
+                        <select
+                          value={companyId}
+                          onChange={(event) => setCompanyId(event.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                        >
+                          <option value="">Select company</option>
+                          {companies.map((company) => (
+                            <option key={company.id} value={company.id}>
+                              {company.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-700">
-                  Shop {dueAmount > 0 ? '(required for due)' : '(optional)'}
-                </span>
-                <select
-                  value={shopId}
-                  onChange={(event) => setShopId(event.target.value)}
-                  className={`w-full rounded-2xl border bg-slate-50 px-4 py-3 text-sm ${
-                    dueAmount > 0 && !shopId
-                      ? 'border-amber-300'
-                      : 'border-slate-200'
-                  }`}
-                >
-                  <option value="">Optional shop</option>
-                  {shops.map((shop) => (
-                    <option key={shop.id} value={shop.id}>
-                      {shop.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Route</span>
+                        <select
+                          value={routeId}
+                          onChange={(event) => setRouteId(event.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                        >
+                          <option value="">Select route</option>
+                          {routes.map((route) => (
+                            <option key={route.id} value={route.id}>
+                              {route.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-700">Sale date</span>
-                <input
-                  type="datetime-local"
-                  value={saleDate}
-                  onChange={(event) => setSaleDate(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-                />
-              </label>
-            </div>
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-slate-700">
+                          Shop {dueAmount > 0 ? '(required for due)' : '(optional)'}
+                        </span>
+                        <select
+                          value={shopId}
+                          onChange={(event) => setShopId(event.target.value)}
+                          className={`w-full rounded-2xl border bg-slate-50 px-4 py-3 text-sm ${
+                            dueAmount > 0 && !shopId
+                              ? 'border-amber-300'
+                              : 'border-slate-200'
+                          }`}
+                        >
+                          <option value="">Optional shop</option>
+                          {shops.map((shop) => (
+                            <option key={shop.id} value={shop.id}>
+                              {shop.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs text-slate-500">
+                            {routeId
+                              ? 'Create a new shop for the selected route without leaving this page.'
+                              : 'Select a route first to load or create shops.'}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={!routeId}
+                            onClick={() => {
+                              setShopFormError(null);
+                              setShopSuccessMessage(null);
+                              setIsCreateShopOpen((current) => !current);
+                            }}
+                            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isCreateShopOpen ? 'Cancel shop' : 'Create shop'}
+                          </button>
+                        </div>
+                      </label>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-700">Invoice no</span>
-                <input
-                  value={invoiceNo}
-                  onChange={(event) => setInvoiceNo(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-                  placeholder="Leave blank to let backend generate one"
-                />
-              </label>
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Sale date</span>
+                        <input
+                          type="datetime-local"
+                          value={saleDate}
+                          onChange={(event) => setSaleDate(event.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                        />
+                      </label>
+                    </div>
 
-              <label className="block space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-slate-700">Invoice Discount</span>
-                  <select 
-                    value={invoiceDiscountType} 
-                    onChange={(e: any) => setInvoiceDiscountType(e.target.value)}
-                    className="text-xs bg-slate-100 border-none rounded px-2"
-                  >
-                    <option value="percentage">%</option>
-                    <option value="fixed">Fixed</option>
-                  </select>
+                    {isCreateShopOpen ? (
+                      <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
+                        <div className="mb-4">
+                          <p className="text-sm font-semibold text-cyan-900">Create shop for this route</p>
+                          <p className="mt-1 text-xs text-cyan-800">
+                            The new shop will be added to the selected route and auto-selected for this sale.
+                          </p>
+                        </div>
+
+                        <form onSubmit={(event) => void handleCreateShop(event)} className="space-y-4">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <label className="block space-y-2">
+                              <span className="text-sm font-medium text-slate-700">Shop name</span>
+                              <input
+                                value={shopForm.name}
+                                onChange={(event) =>
+                                  setShopForm((current) => ({ ...current, name: event.target.value }))
+                                }
+                                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                placeholder="Enter shop name"
+                              />
+                            </label>
+
+                            <label className="block space-y-2">
+                              <span className="text-sm font-medium text-slate-700">Owner name</span>
+                              <input
+                                value={shopForm.ownerName}
+                                onChange={(event) =>
+                                  setShopForm((current) => ({ ...current, ownerName: event.target.value }))
+                                }
+                                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                placeholder="Optional owner name"
+                              />
+                            </label>
+
+                            <label className="block space-y-2">
+                              <span className="text-sm font-medium text-slate-700">Phone</span>
+                              <input
+                                value={shopForm.phone}
+                                onChange={(event) =>
+                                  setShopForm((current) => ({ ...current, phone: event.target.value }))
+                                }
+                                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                placeholder="Optional phone"
+                              />
+                            </label>
+
+                            <label className="block space-y-2 md:col-span-2">
+                              <span className="text-sm font-medium text-slate-700">Address</span>
+                              <textarea
+                                value={shopForm.address}
+                                onChange={(event) =>
+                                  setShopForm((current) => ({ ...current, address: event.target.value }))
+                                }
+                                rows={3}
+                                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                placeholder="Optional address"
+                              />
+                            </label>
+                          </div>
+
+                          <div className="flex flex-wrap gap-3">
+                            <button
+                              type="submit"
+                              disabled={isCreatingShop}
+                              className="rounded-2xl bg-cyan-700 px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
+                            >
+                              {isCreatingShop ? 'Creating shop...' : 'Create & select shop'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsCreateShopOpen(false)}
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    ) : null}
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Invoice no</span>
+                        <input
+                          value={invoiceNo}
+                          onChange={(event) => setInvoiceNo(event.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                          placeholder="Leave blank to let backend generate one"
+                        />
+                      </label>
+
+                      <label className="block space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-slate-700">Invoice Discount</span>
+                          <select 
+                            value={invoiceDiscountType} 
+                            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                              setInvoiceDiscountType(
+                                event.target.value as 'percentage' | 'fixed',
+                              )
+                            }
+                            className="text-xs bg-slate-100 border-none rounded px-2"
+                          >
+                            <option value="percentage">%</option>
+                            <option value="fixed">Fixed</option>
+                          </select>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={invoiceDiscountValue}
+                          onChange={(event) => setInvoiceDiscountValue(event.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                          placeholder={`Discount ${invoiceDiscountType === 'percentage' ? '%' : 'Amount'}`}
+                        />
+                      </label>
+
+                      <label className="block space-y-2 md:col-span-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-slate-700">Paid amount</span>
+                          {paymentMode === 'full' ? (
+                            <span className="text-xs font-medium text-emerald-700">
+                              Auto-filled from total
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setPaidAmount(formatMoneyInput(totalAmount))}
+                              className="text-xs font-medium text-slate-600 underline underline-offset-4"
+                            >
+                              Use full amount
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={paidAmount}
+                          onChange={(event) => setPaidAmount(event.target.value)}
+                          disabled={paymentMode === 'full'}
+                          className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm ${
+                            paymentMode === 'full' ? 'cursor-not-allowed opacity-70' : ''
+                          }`}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="block space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Note</span>
+                      <textarea
+                        value={note}
+                        onChange={(event) => setNote(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                        placeholder="Optional sale note"
+                      />
+                    </label>
+                  </div>
                 </div>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={invoiceDiscountValue}
-                  onChange={(event) => setInvoiceDiscountValue(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-                  placeholder={`Discount ${invoiceDiscountType === 'percentage' ? '%' : 'Amount'}`}
-                />
-              </label>
 
-              <label className="block space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-slate-700">Paid amount</span>
-                  {paymentMode === 'full' ? (
-                    <span className="text-xs font-medium text-emerald-700">
-                      Auto-filled from total
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setPaidAmount(formatMoneyInput(totalAmount))}
-                      className="text-xs font-medium text-slate-600 underline underline-offset-4"
-                    >
-                      Use full amount
-                    </button>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-2xl bg-slate-900 p-5 text-white">
+                    <p className="text-sm text-slate-300">Total amount</p>
+                    <p className="mt-2 text-3xl font-semibold">
+                      {formatCurrency(totalAmount)}
+                    </p>
+                  </div>
+                  {showProfit && (
+                    <div className="rounded-2xl bg-emerald-50 p-5 text-emerald-900">
+                      <p className="text-sm">Total profit</p>
+                      <p className="mt-2 text-3xl font-semibold">
+                        {formatCurrency(totalProfit)}
+                      </p>
+                    </div>
                   )}
+                  <div
+                    className={`rounded-2xl p-5 ${
+                      dueAmount > 0
+                        ? 'bg-amber-50 text-amber-900'
+                        : 'bg-emerald-50 text-emerald-900'
+                    }`}
+                  >
+                    <p className="text-sm">Due amount</p>
+                    <p className="mt-2 text-3xl font-semibold">
+                      {formatCurrency(dueAmount)}
+                    </p>
+                    {invoiceDiscountAmount > 0 ? (
+                      <p className="mt-1 text-xs font-semibold text-emerald-700">
+                        Includes {formatCurrency(invoiceDiscountAmount)} discount
+                      </p>
+                    ) : null}
+                    {dueAmount > 0 && !shopId ? (
+                      <p className="mt-2 text-xs font-medium">
+                        Shop is required before submitting a due sale.
+                      </p>
+                    ) : paymentMode === 'full' ? (
+                      <p className="mt-2 text-xs font-medium">
+                        This sale will be saved as fully paid.
+                      </p>
+                    ) : null}
+                    {!shopId ? (
+                      <p className="mt-2 text-xs font-medium">
+                        Select a shop before using `Save & Print Invoice`.
+                      </p>
+                    ) : dueAmount === 0 ? (
+                      <p className="mt-2 text-xs font-medium">
+                        Due is zero, so this sale will be fully paid.
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={paidAmount}
-                  onChange={(event) => setPaidAmount(event.target.value)}
-                  disabled={paymentMode === 'full'}
-                  className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm ${
-                    paymentMode === 'full' ? 'cursor-not-allowed opacity-70' : ''
-                  }`}
-                />
-              </label>
-            </div>
 
-            <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-700">Note</span>
-              <textarea
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                rows={3}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-                placeholder="Optional sale note"
-              />
-            </label>
+                <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
+                  <p className="font-semibold">Fast order entry</p>
+                  <p className="mt-2 leading-6">
+                    Use `Save & next order` when you are entering many sales on the same day. Company, route, date, and the quick full-paid mode stay ready so the next order is faster to enter.
+                  </p>
+                </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-3 md:flex-row">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => void submitSale('next')}
+                    className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
+                  >
+                    {isSaving ? 'Saving...' : 'Save & next order'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 disabled:opacity-60 hover:bg-slate-50 transition"
+                  >
+                    {isSaving ? 'Saving...' : 'Save & view details'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => void submitSale('print')}
+                    className="rounded-2xl border-2 border-indigo-600 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700 disabled:opacity-60 hover:bg-indigo-100 transition"
+                  >
+                    {isSaving ? 'Saving...' : 'Save & Print Invoice'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="xl:sticky xl:top-6">
+                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-6">
                 <h3 className="text-xl font-semibold text-slate-900">Sale Items</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -1081,7 +1372,14 @@ export function CreateSalePage() {
                             <span className="text-sm font-medium text-slate-700">Discount</span>
                             <select
                                 value={item.discountType}
-                                onChange={(e: any) => updateSaleItem(item.id, c => ({ ...c, discountType: e.target.value }))}
+                                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                                  updateSaleItem(item.id, (currentItem) => ({
+                                    ...currentItem,
+                                    discountType: event.target.value as
+                                      | 'percentage'
+                                      | 'fixed',
+                                  }))
+                                }
                                 className="text-xs bg-slate-100 border px-1"
                             >
                                 <option value="percentage">%</option>
@@ -1184,86 +1482,8 @@ export function CreateSalePage() {
                   Add another item
                 </button>
               </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-2xl bg-slate-900 p-5 text-white">
-                <p className="text-sm text-slate-300">Total amount</p>
-                <p className="mt-2 text-3xl font-semibold">
-                  {formatCurrency(totalAmount)}
-                </p>
-              </div>
-              {showProfit && (
-                <div className="rounded-2xl bg-emerald-50 p-5 text-emerald-900">
-                  <p className="text-sm">Total profit</p>
-                  <p className="mt-2 text-3xl font-semibold">
-                    {formatCurrency(totalProfit)}
-                  </p>
                 </div>
-              )}
-              <div
-                className={`rounded-2xl p-5 ${
-                  dueAmount > 0
-                    ? 'bg-amber-50 text-amber-900'
-                    : 'bg-emerald-50 text-emerald-900'
-                }`}
-              >
-                <p className="text-sm">Due amount</p>
-                <p className="mt-2 text-3xl font-semibold">
-                  {formatCurrency(dueAmount)}
-                </p>
-                {invoiceDiscountAmount > 0 ? (
-                  <p className="mt-1 text-xs font-semibold text-emerald-700">
-                    Includes {formatCurrency(invoiceDiscountAmount)} discount
-                  </p>
-                ) : null}
-                {dueAmount > 0 && !shopId ? (
-                  <p className="mt-2 text-xs font-medium">
-                    Shop is required before submitting a due sale.
-                  </p>
-                ) : paymentMode === 'full' ? (
-                  <p className="mt-2 text-xs font-medium">
-                    This sale will be saved as fully paid.
-                  </p>
-                ) : dueAmount === 0 ? (
-                  <p className="mt-2 text-xs font-medium">
-                    Due is zero, so this sale will be fully paid.
-                  </p>
-                ) : null}
               </div>
-            </div>
-
-            <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
-              <p className="font-semibold">Fast order entry</p>
-              <p className="mt-2 leading-6">
-                Use `Save & next order` when you are entering many sales on the same day. Company, route, date, and the quick full-paid mode stay ready so the next order is faster to enter.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3 md:flex-row">
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={() => void submitSale('next')}
-                className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {isSaving ? 'Saving...' : 'Save & next order'}
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 disabled:opacity-60 hover:bg-slate-50 transition"
-              >
-                {isSaving ? 'Saving...' : 'Save & view details'}
-              </button>
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={() => void submitSale('print')}
-                className="rounded-2xl border-2 border-indigo-600 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700 disabled:opacity-60 hover:bg-indigo-100 transition"
-              >
-                {isSaving ? 'Saving...' : 'Save & Print Invoice'}
-              </button>
             </div>
           </form>
         ) : null}
