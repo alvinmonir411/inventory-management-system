@@ -40,7 +40,8 @@ export type StockMovementType =
   | 'STOCK_IN'
   | 'SALE_OUT'
   | 'RETURN_IN'
-  | 'ADJUSTMENT';
+  | 'ADJUSTMENT'
+  | 'DAMAGE';
 
 export type StockMovement = {
   id: number;
@@ -298,6 +299,9 @@ export type Sale = {
   dueAmount: number;
   totalProfit: number;
   note: string | null;
+  invoiceDiscountType: string | null;
+  invoiceDiscountValue: number | null;
+  invoiceDiscountAmount: number | null;
   createdAt: string;
   updatedAt: string;
   company?: Company;
@@ -316,6 +320,10 @@ export type SaleItem = {
   buyPrice: number;
   lineTotal: number;
   lineProfit: number;
+  discountType: string | null;
+  discountValue: number | null;
+  discountAmount: number | null;
+  freeQuantity: number;
   createdAt: string;
   updatedAt: string;
   product?: Product;
@@ -335,6 +343,9 @@ export type CreateSaleItemPayload = {
   productId: number;
   quantity: number;
   unitPrice: number;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  freeQuantity?: number;
 };
 
 export type CreateSalePayload = {
@@ -345,6 +356,8 @@ export type CreateSalePayload = {
   invoiceNo?: string;
   paidAmount: number;
   note?: string;
+  invoiceDiscountType?: 'percentage' | 'fixed';
+  invoiceDiscountValue?: number;
   items: CreateSaleItemPayload[];
 };
 
@@ -492,4 +505,21 @@ export type CompanyWiseSalesSummary = {
   paidAmount: number;
   dueAmount: number;
   totalProfit: number;
+};
+
+export type Role = 'ADMIN' | 'MANAGER' | 'SALES';
+
+export type User = {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LoginResponse = {
+  access_token: string;
+  user: User;
 };

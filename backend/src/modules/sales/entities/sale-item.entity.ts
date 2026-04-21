@@ -57,6 +57,36 @@ export class SaleItem {
   })
   lineTotal: number;
 
+  @Column({ type: 'varchar', nullable: true })
+  discountType: string | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    transformer: numericColumnTransformer,
+    nullable: true,
+  })
+  discountValue: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    transformer: numericColumnTransformer,
+    nullable: true,
+  })
+  discountAmount: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 14,
+    scale: 3,
+    transformer: numericColumnTransformer,
+    default: 0,
+  })
+  freeQuantity: number;
+
   @Column({
     type: 'decimal',
     precision: 14,

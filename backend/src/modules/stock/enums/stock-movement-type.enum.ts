@@ -4,4 +4,5 @@ export enum StockMovementType {
   SALE_OUT = 'SALE_OUT',
   RETURN_IN = 'RETURN_IN',
   ADJUSTMENT = 'ADJUSTMENT',
+  DAMAGE = 'DAMAGE',
 }

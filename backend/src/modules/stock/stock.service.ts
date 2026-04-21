@@ -54,17 +54,34 @@ export class StockService {
     );
   }
 
+  createDamage(createStockMovementDto: CreateStockMovementDto) {
+    this.validatePositiveQuantity(
+      createStockMovementDto.quantity,
+      'Damage entry',
+    );
+    return this.createMovement(
+      StockMovementType.DAMAGE,
+      createStockMovementDto,
+    );
+  }
+
   async findMovements(query: QueryStockMovementsDto) {
-    await this.ensureCompanyExists(query.companyId);
+    if (query.companyId && query.companyId > 0) {
+      await this.ensureCompanyExists(query.companyId);
+    }
 
     const searchTerm = query.search?.trim();
     const queryBuilder = this.stockMovementsRepository
       .createQueryBuilder('movement')
       .leftJoinAndSelect('movement.company', 'company')
       .leftJoinAndSelect('movement.product', 'product')
-      .where('movement.companyId = :companyId', {
+      .where('1 = 1');
+
+    if (query.companyId && query.companyId > 0) {
+      queryBuilder.andWhere('movement.companyId = :companyId', {
         companyId: query.companyId,
       });
+    }
 
     if (query.productId) {
       queryBuilder.andWhere('movement.productId = :productId', {
@@ -326,6 +343,7 @@ export class StockService {
                 SUM(
                   CASE
                     WHEN movement.type = :saleOutType THEN -movement.quantity
+                    WHEN movement.type = :damageType THEN -movement.quantity
                     ELSE movement.quantity
                   END
                 )
@@ -339,6 +357,7 @@ export class StockService {
         '"stock_summary"."productId" = product.id AND "stock_summary"."companyId" = product.companyId',
         {
           saleOutType: StockMovementType.SALE_OUT,
+          damageType: StockMovementType.DAMAGE,
         },
       )
       .where('1 = 1');

@@ -22,4 +22,5 @@ async function bootstrap() {
 
   await app.listen(configService.get<number>('app.port') ?? 3001);
 }
+// Trigger nest reload
 void bootstrap();

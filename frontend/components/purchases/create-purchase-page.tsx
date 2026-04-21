@@ -2,14 +2,14 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { getCompanies } from '@/lib/api/companies';
 import { getProducts } from '@/lib/api/products';
 import { createPurchase } from '@/lib/api/purchases';
 import { LoadingBlock } from '@/components/ui/loading-block';
 import { PageCard } from '@/components/ui/page-card';
 import { StateMessage } from '@/components/ui/state-message';
-import { useToastNotification } from '@/components/ui/toast-provider';
+import { useToast, useToastNotification } from '@/components/ui/toast-provider';
 import { formatCurrency, formatNumber } from '@/lib/utils/format';
 import type { Company, Product } from '@/types/api';
 
@@ -33,6 +33,7 @@ function roundCurrency(value: number) {
 
 export function CreatePurchasePage() {
   const router = useRouter();
+  const { success } = useToast();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [companyId, setCompanyId] = useState('');
@@ -81,44 +82,21 @@ export function CreatePurchasePage() {
   }, []);
 
   useEffect(() => {
-    async function loadCompanyProducts() {
-      if (!companyId) {
-        setProducts([]);
-        setItems([initialItem()]);
-        return;
-      }
-
+    async function loadAllProducts() {
       try {
-        const productData = await getProducts(Number(companyId));
+        const productData = await getProducts();
         setProducts(productData);
-        setItems((current) =>
-          current.map((item) => {
-            const selectedProduct = productData.find(
-              (product) => product.id === Number(item.productId),
-            );
-
-            if (!selectedProduct) {
-              return {
-                ...item,
-                productId: '',
-                unitCost: '',
-              };
-            }
-
-            return item;
-          }),
-        );
       } catch (loadError) {
         setFormError(
           loadError instanceof Error
             ? loadError.message
-            : 'Failed to load products for the selected company.',
+            : 'Failed to load products.',
         );
       }
     }
 
-    void loadCompanyProducts();
-  }, [companyId]);
+    void loadAllProducts();
+  }, []);
 
   const selectedProducts = useMemo(
     () =>
@@ -193,6 +171,7 @@ export function CreatePurchasePage() {
         })),
       });
 
+      success('Purchase Recorded Successfully', `Purchase #${purchase.id} was created.`);
       router.push(`/purchases/${purchase.id}`);
     } catch (saveError) {
       setFormError(
@@ -311,32 +290,29 @@ export function CreatePurchasePage() {
                         <div className="grid gap-4 xl:grid-cols-[1.5fr_0.8fr_0.8fr_auto]">
                           <label className="block space-y-2">
                             <span className="text-sm font-medium text-slate-700">
-                              Product
+                              Product (Search)
                             </span>
-                            <select
+                            <SearchableProductSelect
+                              products={products}
                               value={item.productId}
-                              onChange={(event) => {
+                              onChange={(newId) => {
                                 const nextProduct = products.find(
-                                  (product) => product.id === Number(event.target.value),
+                                  (product) => product.id === Number(newId),
                                 );
+
+                                if (nextProduct && nextProduct.companyId) {
+                                  setCompanyId(String(nextProduct.companyId));
+                                }
 
                                 updateItem(item.id, (currentItem) => ({
                                   ...currentItem,
-                                  productId: event.target.value,
+                                  productId: newId,
                                   unitCost: nextProduct
                                     ? String(nextProduct.buyPrice)
                                     : currentItem.unitCost,
                                 }));
                               }}
-                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                            >
-                              <option value="">Select product</option>
-                              {products.map((product) => (
-                                <option key={product.id} value={product.id}>
-                                  {product.name} / {product.sku}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </label>
 
                           <label className="block space-y-2">
@@ -479,6 +455,93 @@ function InfoPill({
     <div className={`rounded-2xl px-4 py-3 text-sm ${className}`}>
       <p className="text-current/70">{label}</p>
       <p className="mt-1 font-medium">{value}</p>
+    </div>
+  );
+}
+
+function SearchableProductSelect({
+  products,
+  value,
+  onChange,
+}: {
+  products: Product[];
+  value: string;
+  onChange: (productId: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedProduct = useMemo(
+    () => products.find((p) => String(p.id) === value),
+    [products, value]
+  );
+
+  useEffect(() => {
+    if (!isOpen) {
+      setQuery(selectedProduct ? `${selectedProduct.name} / ${selectedProduct.sku}` : '');
+    }
+  }, [isOpen, selectedProduct]);
+
+  const filteredProducts = query === '' 
+    ? products 
+    : products.filter(p => 
+        p.name.toLowerCase().includes(query.toLowerCase()) || 
+        p.sku.toLowerCase().includes(query.toLowerCase())
+      );
+
+  return (
+    <div ref={wrapperRef} className="relative w-full">
+      <input
+        type="text"
+        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm transition-all focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+        placeholder="Type to search product..."
+        value={isOpen ? query : (selectedProduct ? `${selectedProduct.name} / ${selectedProduct.sku}` : '')}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setIsOpen(true);
+        }}
+        onClick={() => setIsOpen(true)}
+        onFocus={() => setIsOpen(true)}
+      />
+      
+      {isOpen && (
+        <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white py-2 shadow-xl">
+          {filteredProducts.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-slate-500">No products found.</div>
+          ) : (
+            filteredProducts.map((product) => {
+              const isSelected = String(product.id) === value;
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-slate-50 ${
+                    isSelected ? 'bg-slate-50 text-slate-900 font-semibold' : 'text-slate-700'
+                  }`}
+                  onClick={() => {
+                    onChange(String(product.id));
+                    setIsOpen(false);
+                  }}
+                >
+                  <span>{product.name}</span>
+                  <span className="text-xs text-slate-400">{product.sku}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

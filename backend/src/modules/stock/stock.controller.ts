@@ -23,6 +23,11 @@ export class StockController {
     return this.stockService.createAdjustment(createStockMovementDto);
   }
 
+  @Post('damage')
+  createDamage(@Body() createStockMovementDto: CreateStockMovementDto) {
+    return this.stockService.createDamage(createStockMovementDto);
+  }
+
   @Get('movements')
   findMovements(@Query() query: QueryStockMovementsDto) {
     return this.stockService.findMovements(query);

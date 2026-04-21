@@ -64,3 +64,10 @@ export function addAdjustment(payload: CreateStockMovementPayload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function addDamage(payload: CreateStockMovementPayload) {
+  return apiRequest('stock/damage', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}

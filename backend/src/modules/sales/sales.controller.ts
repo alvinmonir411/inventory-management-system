@@ -12,8 +12,14 @@ import { QuerySalesDto } from './dto/query-sales.dto';
 import { ReceiveSalePaymentDto } from './dto/receive-sale-payment.dto';
 import { SalesSummaryQueryDto } from './dto/sales-summary-query.dto';
 import { SalesService } from './sales.service';
+import { UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../../common/enums/role.enum';
 
 @Controller('sales')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
@@ -33,6 +39,7 @@ export class SalesController {
   }
 
   @Get('summary/today-profit')
+  @Roles(Role.ADMIN, Role.MANAGER)
   getTodayProfitSummary(@Query() query: SalesSummaryQueryDto) {
     return this.salesService.getTodayProfitSummary(query);
   }

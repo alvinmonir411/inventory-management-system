@@ -11,6 +11,8 @@ import { RoutesModule } from './modules/routes/routes.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { ShopsModule } from './modules/shops/shops.module';
 import { StockModule } from './modules/stock/stock.module';
+import { UsersModule } from './modules/users/users.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { StockModule } from './modules/stock/stock.module';
     SalesModule,
     ShopsModule,
     StockModule,
+    UsersModule,
+    AuthModule,
   ],
 })
 export class AppModule {}

@@ -1,19 +1,40 @@
+'use client';
+
+import { useAuth } from '../auth/auth-provider';
+import { LogOut, User } from 'lucide-react';
+
 export function Topbar() {
+  const { user, logout } = useAuth();
+
   return (
-    <header className="rounded-3xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-medium text-cyan-700">Backend-connected frontend</p>
-          <h2 className="text-xl font-semibold text-slate-900">
-            Operations testing workspace
-          </h2>
+    <header className="rounded-3xl border border-slate-200 bg-white px-6 py-4 shadow-sm flex items-center justify-between">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-800">
+          Dashboard
+        </h2>
+        <p className="text-sm font-medium text-slate-500">
+          {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
+      </div>
+      
+      <div className="flex items-center gap-4">
+        <div className="hidden md:flex items-center gap-3 pr-4 border-r border-slate-200">
+          <div className="text-right">
+            <p className="text-sm font-semibold text-slate-800">{user?.name || 'User'}</p>
+            <p className="text-xs text-slate-500 capitalize">{user?.role?.toLowerCase() || 'Loading...'}</p>
+          </div>
+          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-100 to-blue-50 text-blue-600 flex items-center justify-center border border-blue-200">
+            <User className="w-5 h-5" />
+          </div>
         </div>
-        <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-          API base URL:
-          <span className="ml-2 font-mono text-slate-900">
-            {process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api'}
-          </span>
-        </div>
+        
+        <button 
+          onClick={logout}
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+          <span className="hidden sm:inline">Logout</span>
+        </button>
       </div>
     </header>
   );

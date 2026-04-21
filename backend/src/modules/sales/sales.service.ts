@@ -125,7 +125,7 @@ export class SalesService {
         requiredQuantities.set(
           item.productId,
           this.roundToThree(
-            (requiredQuantities.get(item.productId) ?? 0) + item.quantity,
+            (requiredQuantities.get(item.productId) ?? 0) + item.quantity + (item.freeQuantity ?? 0),
           ),
         );
       }
@@ -153,26 +153,56 @@ export class SalesService {
       const preparedItems = createSaleDto.items.map((item) => {
         const product = productsById.get(item.productId)!;
         const quantity = this.roundToThree(item.quantity);
+        const freeQuantity = item.freeQuantity ? this.roundToThree(item.freeQuantity) : 0;
         const unitPrice = this.roundToTwo(item.unitPrice);
         const buyPrice = this.roundToTwo(product.buyPrice);
-        const lineTotal = this.roundToTwo(quantity * unitPrice);
-        const lineProfit = this.roundToTwo((unitPrice - buyPrice) * quantity);
+        
+        const subTotal = this.roundToTwo(quantity * unitPrice);
+        let discountAmount = 0;
+
+        if (item.discountType && item.discountValue) {
+            if (item.discountType === 'percentage') {
+                discountAmount = this.roundToTwo((subTotal * item.discountValue) / 100);
+            } else if (item.discountType === 'fixed') {
+                discountAmount = this.roundToTwo(item.discountValue);
+            }
+        }
+
+        const lineTotal = this.roundToTwo(subTotal - discountAmount);
+        const totalCost = this.roundToTwo(buyPrice * (quantity + freeQuantity));
+        const lineProfit = this.roundToTwo(lineTotal - totalCost);
 
         return {
           productId: product.id,
           quantity,
+          freeQuantity,
           unitPrice,
           buyPrice,
+          discountType: item.discountType || null,
+          discountValue: item.discountValue ? this.roundToTwo(item.discountValue) : null,
+          discountAmount: discountAmount || null,
           lineTotal,
           lineProfit,
         };
       });
 
-      const totalAmount = this.roundToTwo(
+      const subTotalAmount = this.roundToTwo(
         preparedItems.reduce((sum, item) => sum + item.lineTotal, 0),
       );
+      
+      let invoiceDiscountAmount = 0;
+      if (createSaleDto.invoiceDiscountType && createSaleDto.invoiceDiscountValue) {
+          if (createSaleDto.invoiceDiscountType === 'percentage') {
+              invoiceDiscountAmount = this.roundToTwo((subTotalAmount * createSaleDto.invoiceDiscountValue) / 100);
+          } else {
+              invoiceDiscountAmount = this.roundToTwo(createSaleDto.invoiceDiscountValue);
+          }
+      }
+
+      const totalAmount = this.roundToTwo(subTotalAmount - invoiceDiscountAmount);
+
       const totalProfit = this.roundToTwo(
-        preparedItems.reduce((sum, item) => sum + item.lineProfit, 0),
+        preparedItems.reduce((sum, item) => sum + item.lineProfit, 0) - invoiceDiscountAmount,
       );
       const paidAmount = this.roundToTwo(createSaleDto.paidAmount);
 
@@ -204,6 +234,9 @@ export class SalesService {
         shopId: shop?.id ?? null,
         saleDate: createSaleDto.saleDate,
         invoiceNo,
+        invoiceDiscountType: createSaleDto.invoiceDiscountType || null,
+        invoiceDiscountValue: createSaleDto.invoiceDiscountValue || null,
+        invoiceDiscountAmount: invoiceDiscountAmount || null,
         totalAmount,
         paidAmount,
         dueAmount,
@@ -239,7 +272,7 @@ export class SalesService {
             companyId: company.id,
             productId: item.productId,
             type: StockMovementType.SALE_OUT,
-            quantity: item.quantity,
+            quantity: item.quantity + item.freeQuantity,
             note: `Sale ${invoiceNo}`,
             movementDate: createSaleDto.saleDate,
           })),

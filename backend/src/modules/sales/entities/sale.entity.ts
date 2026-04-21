@@ -40,6 +40,27 @@ export class Sale {
   @Column({ length: 60 })
   invoiceNo: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  invoiceDiscountType: string | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    transformer: numericColumnTransformer,
+    nullable: true,
+  })
+  invoiceDiscountValue: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    transformer: numericColumnTransformer,
+    nullable: true,
+  })
+  invoiceDiscountAmount: number | null;
+
   @Column({
     type: 'decimal',
     precision: 14,

@@ -19,7 +19,8 @@ function buildUrl(
   path: string,
   query?: Record<string, string | number | boolean | undefined | null>,
 ) {
-  const url = new URL(path, API_BASE_URL.endsWith('/') ? API_BASE_URL : `${API_BASE_URL}/`);
+  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+  const url = new URL(cleanPath, API_BASE_URL.endsWith('/') ? API_BASE_URL : `${API_BASE_URL}/`);
 
   if (query) {
     for (const [key, value] of Object.entries(query)) {
@@ -37,10 +38,19 @@ export async function apiRequest<T>(
   options: ApiRequestOptions = {},
 ): Promise<T> {
   const { query, headers, ...restOptions } = options;
+  const authHeaders: Record<string, string> = {};
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('token');
+    if (token) {
+      authHeaders['Authorization'] = `Bearer ${token}`;
+    }
+  }
+
   const response = await fetch(buildUrl(path, query), {
     ...restOptions,
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
       ...headers,
     },
     cache: 'no-store',

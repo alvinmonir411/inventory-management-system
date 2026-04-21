@@ -9,9 +9,10 @@ import {
   IsNumber,
   IsOptional,
   IsPositive,
-  IsString,
   MaxLength,
   ValidateNested,
+  IsIn,
+  IsString,
 } from 'class-validator';
 import { CreateSaleItemDto } from './create-sale-item.dto';
 
@@ -43,9 +44,19 @@ export class CreateSaleDto {
   invoiceNo?: string;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   paidAmount: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['percentage', 'fixed'])
+  invoiceDiscountType?: 'percentage' | 'fixed';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  invoiceDiscountValue?: number;
 
   @IsOptional()
   @IsString()

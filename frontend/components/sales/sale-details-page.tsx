@@ -104,12 +104,21 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
         title="Sale Details"
         description="Inspect the full sale payload, including header information, due status, and all sold items."
         action={
-          <Link
-            href="/sales"
-            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700"
-          >
-            Back to sales
-          </Link>
+          <div className="flex gap-3">
+            <Link
+              href={`/sales/${saleId}/invoice`}
+              target="_blank"
+              className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-700 transition"
+            >
+              Print Invoice
+            </Link>
+            <Link
+              href="/sales"
+              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+            >
+              Back to sales
+            </Link>
+          </div>
         }
       >
         {isLoading ? <LoadingBlock label="Loading sale details..." /> : null}

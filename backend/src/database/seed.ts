@@ -4,6 +4,8 @@ import { DataSource, Repository } from 'typeorm';
 import { AppModule } from '../app.module';
 import { Company } from '../modules/companies/entities/company.entity';
 import { CompaniesService } from '../modules/companies/companies.service';
+import { UsersService } from '../modules/users/users.service';
+import { Role } from '../common/enums/role.enum';
 import { Product } from '../modules/products/entities/product.entity';
 import { ProductUnit } from '../modules/products/entities/product-unit.enum';
 import { ProductsService } from '../modules/products/products.service';
@@ -413,11 +415,24 @@ async function bootstrap() {
     const shopsService = app.get(ShopsService);
     const stockService = app.get(StockService);
     const salesService = app.get(SalesService);
+    const usersService = app.get(UsersService);
 
     Logger.log(
-      'Seeding demo companies, products, routes, shops, stock movements, sales, and due payments...',
+      'Seeding demo admin user, companies, products, routes, shops, stock movements, sales, and due payments...',
       'DatabaseSeed',
     );
+
+    try {
+      await usersService.findByEmail('admin@erp.com');
+    } catch {
+      await usersService.create({
+        name: 'Admin User',
+        email: 'admin@erp.com',
+        password: 'password123',
+        role: Role.ADMIN,
+      });
+      Logger.log('Created default admin user: admin@erp.com / password123', 'DatabaseSeed');
+    }
 
     if (existingCounts.some((count) => count > 0)) {
       Logger.warn(

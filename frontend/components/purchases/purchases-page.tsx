@@ -18,6 +18,21 @@ import type {
   CompanyWisePayableSummary,
   Purchase,
 } from '@/types/api';
+import {
+  Plus,
+  Search,
+  Building2,
+  Calendar,
+  FilterX,
+  FileText,
+  DollarSign,
+  Wallet,
+  AlertCircle,
+  CheckCircle2,
+  ChevronRight,
+  TrendingDown,
+  ArrowUpRight
+} from 'lucide-react';
 
 const purchasesPageSize = 10;
 const payableSummaryPageSize = 8;
@@ -199,257 +214,328 @@ export function PurchasesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12 text-slate-800">
       <PageCard
-        title="Purchases"
-        description="Create purchases, track stock-in from supplier buying, and monitor company payable from one backend-connected workspace."
+        title="Purchases Workspace"
+        description="Filter and find specific purchases, track stock-in from supplier buying, and monitor company payable metrics."
         action={
           <Link
             href="/purchases/create"
-            className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white"
+            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
           >
-            Create purchase
+            <Plus className="h-4 w-4" />
+            <span>Create Purchase</span>
           </Link>
         }
       >
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <input
-            value={searchTerm}
-            onChange={(event) => {
-              resetPages();
-              setSearchTerm(event.target.value);
-            }}
-            placeholder="Search by reference, company, or note"
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
-          />
+        <div className="border border-slate-200 rounded-xl bg-slate-50 p-4">
+          <div className="flex flex-col gap-1 mb-4">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Filter Records By
+            </span>
+          </div>
 
-          <select
-            value={selectedCompanyId ?? ''}
-            onChange={(event) => {
-              resetPages();
-              setSelectedCompanyId(
-                event.target.value ? Number(event.target.value) : null,
-              );
-            }}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
-          >
-            <option value="">All companies</option>
-            {companies.map((company) => (
-              <option key={company.id} value={company.id}>
-                {company.name}
-              </option>
-            ))}
-          </select>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                value={searchTerm}
+                onChange={(event) => {
+                  resetPages();
+                  setSearchTerm(event.target.value);
+                }}
+                placeholder="Reference or Note..."
+                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
 
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(event) => {
-              resetPages();
-              setFromDate(event.target.value);
-            }}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
-          />
+            {/* Company Select */}
+            <div className="relative">
+              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <select
+                value={selectedCompanyId ?? ''}
+                onChange={(event) => {
+                  resetPages();
+                  setSelectedCompanyId(
+                    event.target.value ? Number(event.target.value) : null,
+                  );
+                }}
+                className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">All Companies</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <input
-            type="date"
-            value={toDate}
-            onChange={(event) => {
-              resetPages();
-              setToDate(event.target.value);
-            }}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
-          />
-        </div>
+            {/* Date Range Start */}
+            <div className="relative">
+              <span className="absolute -top-2.5 left-2 bg-white px-1 text-[10px] font-medium text-slate-500 border border-slate-200 rounded">
+                From Date
+              </span>
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(event) => {
+                  resetPages();
+                  setFromDate(event.target.value);
+                }}
+                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={applyTodayFilter}
-            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={applyThisMonthFilter}
-            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            This month
-          </button>
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Clear filters
-          </button>
+            {/* Date Range End */}
+            <div className="relative">
+              <span className="absolute -top-2.5 left-2 bg-white px-1 text-[10px] font-medium text-slate-500 border border-slate-200 rounded">
+                To Date
+              </span>
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="date"
+                value={toDate}
+                onChange={(event) => {
+                  resetPages();
+                  setToDate(event.target.value);
+                }}
+                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={applyTodayFilter}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={applyThisMonthFilter}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              This month
+            </button>
+            <div className="ml-auto">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-transparent px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-200 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-500"
+                title="Clear filters"
+              >
+                <FilterX className="h-3.5 w-3.5" />
+                <span>Clear Filters</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {isFilterLoading || isWorkspaceLoading ? (
-          <LoadingBlock label="Loading purchases workspace..." />
+          <div className="mt-6">
+            <LoadingBlock label="Syncing data..." />
+          </div>
         ) : null}
       </PageCard>
 
       {!isWorkspaceLoading && !error ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryMetric
-            title="Matching purchases"
+            title="Matching Purchases"
             value={String(purchaseStats.purchaseCount)}
-            note="Filtered purchases in view"
-            tone="dark"
+            note="Filtered results"
+            icon={<FileText className="h-5 w-5" />}
+            colorClass="text-indigo-600 bg-indigo-50"
           />
           <SummaryMetric
-            title="Purchased amount"
+            title="Purchased Amount"
             value={formatCurrency(purchaseStats.totalAmount)}
-            note="Total amount across current filters"
-            tone="blue"
+            note="Total order value"
+            icon={<DollarSign className="h-5 w-5" />}
+            colorClass="text-blue-600 bg-blue-50"
           />
           <SummaryMetric
-            title="Settled amount"
+            title="Settled Amount"
             value={formatCurrency(purchaseStats.totalPaid)}
-            note="Payments recorded so far"
-            tone="green"
+            note="Paid to suppliers"
+            icon={<Wallet className="h-5 w-5" />}
+            colorClass="text-emerald-600 bg-emerald-50"
           />
           <button
             type="button"
             onClick={scrollToPayableSummary}
-            className="rounded-2xl bg-amber-50 p-5 text-left text-amber-900 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-300"
+            className="group flex flex-col justify-between rounded-2xl border border-rose-200 bg-white p-5 shadow-sm transition-all hover:border-rose-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-rose-500"
           >
-            <p className="text-sm">Outstanding payable</p>
-            <p className="mt-2 text-3xl font-semibold">
-              {formatCurrency(purchaseStats.totalPayable)}
-            </p>
-            <p className="mt-2 text-sm text-amber-800/80">
-              Click to open company payable summary
-            </p>
+            <div className="flex w-full items-center justify-between">
+              <p className="text-sm font-medium text-slate-600">Outstanding Payable</p>
+              <div className="rounded-lg bg-rose-50 p-2 text-rose-600">
+                <TrendingDown className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="mt-2 text-left">
+              <p className="text-2xl font-bold text-slate-900">
+                {formatCurrency(purchaseStats.totalPayable)}
+              </p>
+              <div className="mt-1 flex items-center gap-1 text-xs font-medium text-rose-600">
+                <span>View payable summary</span>
+                <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+              </div>
+            </div>
           </button>
         </div>
       ) : null}
 
       <PageCard
         title="Purchase List"
-        description="Review purchase records, confirm payable status, and jump into purchase details or company payable ledgers."
+        description="Detailed list of purchases and their current settlement status."
       >
         {isWorkspaceLoading ? <LoadingBlock label="Loading purchase list..." /> : null}
         {!isWorkspaceLoading && !error ? (
           <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead>
-                  <tr className="text-left text-slate-500">
-                    <th className="px-3 py-3 font-medium">Reference</th>
-                    <th className="px-3 py-3 font-medium">Company</th>
-                    <th className="px-3 py-3 font-medium">Purchase date</th>
-                    <th className="px-3 py-3 font-medium">Total</th>
-                    <th className="px-3 py-3 font-medium">Paid</th>
-                    <th className="px-3 py-3 font-medium">Payable</th>
-                    <th className="px-3 py-3 font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {paginatedPurchases.map((purchase) => (
-                    <tr
-                      key={purchase.id}
-                      className={purchase.payableAmount > 0 ? 'bg-amber-50/30' : ''}
-                    >
-                      <td className="px-3 py-4">
-                        <div className="font-medium text-slate-900">
-                          {getPurchaseReference(purchase)}
-                        </div>
-                        <div className="text-xs text-slate-500">#{purchase.id}</div>
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className="font-medium text-slate-900">
-                          {purchase.company?.name ?? `Company #${purchase.companyId}`}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {purchase.company?.code ?? ''}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4 text-slate-700">
-                        {formatDate(purchase.purchaseDate)}
-                      </td>
-                      <td className="px-3 py-4 font-medium text-slate-900">
-                        {formatCurrency(purchase.totalAmount)}
-                      </td>
-                      <td className="px-3 py-4 text-slate-700">
-                        {formatCurrency(purchase.paidAmount)}
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className="font-medium text-slate-900">
-                          {formatCurrency(purchase.payableAmount)}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {purchase.payableAmount > 0 ? 'Need settlement' : 'Settled'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className="flex flex-col gap-2">
-                          <Link
-                            href={`/purchases/${purchase.id}`}
-                            className="rounded-xl border border-slate-200 px-3 py-2 text-center text-xs font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            {purchase.payableAmount > 0
-                              ? 'Settle payable'
-                              : 'View details'}
-                          </Link>
-                          <Link
-                            href={`/purchases/companies/${purchase.companyId}`}
-                            className="rounded-xl border border-slate-200 px-3 py-2 text-center text-xs font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            Company ledger
-                          </Link>
-                        </div>
-                      </td>
+            <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+                      <th className="px-6 py-3">Reference / ID</th>
+                      <th className="px-6 py-3">Supplier Company</th>
+                      <th className="px-6 py-3">Purchase Date</th>
+                      <th className="px-6 py-3 text-right">Total Amount</th>
+                      <th className="px-6 py-3 text-right">Paid</th>
+                      <th className="px-6 py-3 text-center">Status</th>
+                      <th className="px-6 py-3 text-center">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {paginatedPurchases.map((purchase) => {
+                      const isPayable = purchase.payableAmount > 0;
+                      return (
+                        <tr
+                          key={purchase.id}
+                          className="transition-colors hover:bg-slate-50/50"
+                        >
+                          <td className="px-6 py-4">
+                            <div className="font-medium text-slate-900">
+                              {getPurchaseReference(purchase)}
+                            </div>
+                            <div className="mt-0.5 text-xs text-slate-500">
+                              #{purchase.id}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-medium text-slate-900">
+                              {purchase.company?.name ?? `Unknown`}
+                            </div>
+                            <div className="mt-0.5 text-xs text-slate-500">
+                              {purchase.company?.code ?? '-'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-slate-600">
+                            {formatDate(purchase.purchaseDate)}
+                          </td>
+                          <td className="px-6 py-4 text-right font-medium text-slate-900">
+                            {formatCurrency(purchase.totalAmount)}
+                          </td>
+                          <td className="px-6 py-4 text-right text-slate-600">
+                            {formatCurrency(purchase.paidAmount)}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {isPayable ? (
+                              <div className="inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-600/20">
+                                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                                {formatCurrency(purchase.payableAmount)} due
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                Settled
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <Link
+                                href={`/purchases/${purchase.id}`}
+                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                              >
+                                {isPayable ? 'Settle' : 'View'}
+                              </Link>
+                              <Link
+                                href={`/purchases/companies/${purchase.companyId}`}
+                                className="inline-flex text-slate-400 hover:text-indigo-600 transition-colors"
+                                title="Open Company Ledger"
+                              >
+                                <ArrowUpRight className="h-4 w-4" />
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {purchases.length === 0 ? (
-              <div className="pt-4">
+              <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
                 <StateMessage
                   title="No purchases found"
-                  description="Create a purchase first, or widen the current company, search, and date filters."
+                  description="Adjust your search, company, or date filters to find matching purchases."
                 />
               </div>
             ) : null}
 
-            <Pagination
-              currentPage={purchasePage}
-              totalItems={purchases.length}
-              pageSize={purchasesPageSize}
-              onPageChange={setPurchasePage}
-            />
+            <div className="mt-4">
+              <Pagination
+                currentPage={purchasePage}
+                totalItems={purchases.length}
+                pageSize={purchasesPageSize}
+                onPageChange={setPurchasePage}
+              />
+            </div>
           </>
         ) : null}
       </PageCard>
 
-      <div ref={summarySectionRef}>
+      <div ref={summarySectionRef} className="scroll-mt-6">
         <PageCard
-          title="Company-wise Payable Summary"
-          description="See which companies currently carry outstanding purchase payable and open the full payable ledger for each one."
+          title="Company By Payable Summary"
+          description="A consolidated view of companies carrying outstanding balances."
         >
-          {isWorkspaceLoading ? <LoadingBlock label="Loading payable summary..." /> : null}
+          {isWorkspaceLoading ? <LoadingBlock label="Loading playable summary..." /> : null}
           {!isWorkspaceLoading && !error ? (
             <>
-              <PayableSummaryTable rows={paginatedPayableSummary} />
+              {payableSummary.length > 0 ? (
+                <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
+                  <PayableSummaryTable rows={paginatedPayableSummary} />
+                </div>
+              ) : null}
+              
               {payableSummary.length === 0 ? (
-                <div className="pt-4">
+                <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
                   <StateMessage
-                    title="No payable companies"
-                    description="Companies with outstanding purchase payable will appear here after you create purchases and before they are fully settled."
+                    title="No Outstanding Payables"
+                    description="Awesome! There are no companies with outstanding purchase payables matching your filters."
                   />
                 </div>
               ) : null}
-              <Pagination
-                currentPage={payablePage}
-                totalItems={payableSummary.length}
-                pageSize={payableSummaryPageSize}
-                onPageChange={setPayablePage}
-              />
+              
+              {payableSummary.length > 0 && (
+                <div className="mt-4">
+                  <Pagination
+                    currentPage={payablePage}
+                    totalItems={payableSummary.length}
+                    pageSize={payableSummaryPageSize}
+                    onPageChange={setPayablePage}
+                  />
+                </div>
+              )}
             </>
           ) : null}
         </PageCard>
@@ -462,26 +548,27 @@ function SummaryMetric({
   title,
   value,
   note,
-  tone,
+  icon,
+  colorClass,
 }: {
   title: string;
   value: string;
   note: string;
-  tone: 'dark' | 'green' | 'blue';
+  icon: React.ReactNode;
+  colorClass: string;
 }) {
-  const toneClassName = {
-    dark: 'bg-slate-900 text-white',
-    green: 'bg-emerald-50 text-emerald-900',
-    blue: 'bg-cyan-50 text-cyan-900',
-  }[tone];
-
-  const noteClassName = tone === 'dark' ? 'text-slate-300' : 'text-current/70';
-
   return (
-    <div className={`rounded-2xl p-5 ${toneClassName}`}>
-      <p className="text-sm">{title}</p>
-      <p className="mt-2 text-3xl font-semibold">{value}</p>
-      <p className={`mt-2 text-sm ${noteClassName}`}>{note}</p>
+    <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-600">{title}</p>
+        <div className={`rounded-lg p-2 ${colorClass}`}>
+          {icon}
+        </div>
+      </div>
+      <div className="mt-2">
+        <p className="text-2xl font-bold text-slate-900">{value}</p>
+        <p className="mt-1 text-xs text-slate-500">{note}</p>
+      </div>
     </div>
   );
 }
@@ -498,47 +585,63 @@ function PayableSummaryTable({
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-slate-200 text-sm">
-        <thead>
-          <tr className="text-left text-slate-500">
-            <th className="px-3 py-3 font-medium">Company</th>
-            <th className="px-3 py-3 font-medium">Purchases</th>
-            <th className="px-3 py-3 font-medium">Payable Purchases</th>
-            <th className="px-3 py-3 font-medium">Total</th>
-            <th className="px-3 py-3 font-medium">Paid</th>
-            <th className="px-3 py-3 font-medium">Outstanding</th>
-            <th className="px-3 py-3 font-medium">Last Purchase</th>
-            <th className="px-3 py-3 font-medium">Action</th>
+        <thead className="bg-slate-50">
+          <tr className="text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+            <th className="px-6 py-3">Company Name</th>
+            <th className="px-6 py-3 text-center">Total Orders</th>
+            <th className="px-6 py-3 text-center">Unsettled Orders</th>
+            <th className="px-6 py-3 text-right">Total Value</th>
+            <th className="px-6 py-3 text-right">Amount Paid</th>
+            <th className="px-6 py-3 text-right">Outstanding</th>
+            <th className="px-6 py-3">Last Purchase</th>
+            <th className="px-6 py-3 text-center">Action</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-slate-100 bg-white">
           {rows.map((row) => (
-            <tr key={row.companyId}>
-              <td className="px-3 py-4">
+            <tr key={row.companyId} className="transition-colors hover:bg-slate-50/50">
+              <td className="px-6 py-4">
                 <div className="font-medium text-slate-900">{row.companyName}</div>
-                <div className="text-xs text-slate-500">{row.companyCode}</div>
+                <div className="mt-0.5 text-xs text-slate-500">{row.companyCode}</div>
               </td>
-              <td className="px-3 py-4 text-slate-700">{row.purchaseCount}</td>
-              <td className="px-3 py-4 text-slate-700">
-                {row.payablePurchaseCount}
+              <td className="px-6 py-4 text-center text-slate-600">
+                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-medium">
+                  {row.purchaseCount}
+                </span>
               </td>
-              <td className="px-3 py-4 text-slate-700">
+              <td className="px-6 py-4 text-center">
+                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-rose-50 px-2 text-xs font-medium text-rose-700">
+                  {row.payablePurchaseCount}
+                </span>
+              </td>
+              <td className="px-6 py-4 text-right text-slate-600">
                 {formatCurrency(row.totalAmount)}
               </td>
-              <td className="px-3 py-4 text-slate-700">
+              <td className="px-6 py-4 text-right text-slate-600">
                 {formatCurrency(row.totalPaid)}
               </td>
-              <td className="px-3 py-4 font-medium text-amber-700">
-                {formatCurrency(row.totalPayable)}
+              <td className="px-6 py-4 text-right">
+                <div className="font-medium text-rose-600">
+                  {formatCurrency(row.totalPayable)}
+                </div>
               </td>
-              <td className="px-3 py-4 text-slate-700">
-                {row.lastPurchaseDate ? formatDate(row.lastPurchaseDate) : 'No purchase'}
+              <td className="px-6 py-4 text-slate-600">
+                {row.lastPurchaseDate ? (
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                    <span>{formatDate(row.lastPurchaseDate)}</span>
+                  </div>
+                ) : (
+                  <span className="text-slate-400">No purchase</span>
+                )}
               </td>
-              <td className="px-3 py-4">
+              <td className="px-6 py-4 text-center">
                 <Link
                   href={`/purchases/companies/${row.companyId}`}
-                  className="rounded-xl border border-slate-200 px-3 py-2 text-center text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
                 >
-                  Open ledger
+                  <span>Ledger</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
               </td>
             </tr>
