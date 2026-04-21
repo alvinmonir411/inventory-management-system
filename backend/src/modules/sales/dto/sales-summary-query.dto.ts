@@ -73,4 +73,8 @@ export class SalesSummaryQueryDto {
   )
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @IsString()
+  scope?: string;
 }

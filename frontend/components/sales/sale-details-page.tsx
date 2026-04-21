@@ -125,7 +125,7 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
 
         {!isLoading && !error && sale ? (
           <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <InfoCard label="Invoice no" value={sale.invoiceNo} />
               <InfoCard label="Sale date" value={formatDate(sale.saleDate)} />
               <InfoCard
@@ -137,27 +137,105 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
                 value={sale.route?.name ?? `Route #${sale.routeId}`}
               />
               <InfoCard label="Shop" value={sale.shop?.name ?? 'No shop'} />
-              <InfoCard
-                label="Total amount"
-                value={formatCurrency(sale.totalAmount)}
-              />
-              <InfoCard
-                label="Paid amount"
-                value={formatCurrency(sale.paidAmount)}
-              />
-              <InfoCard
-                label="Due amount"
-                value={formatCurrency(sale.dueAmount)}
-              />
-              <InfoCard
-                label="Total profit"
-                value={formatCurrency(sale.totalProfit)}
-              />
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-700">Note</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mt-6">
+              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 p-6 shadow-lg shadow-slate-900/20 text-white transition-transform hover:-translate-y-1">
+                <div className="relative z-10">
+                  <p className="text-sm font-medium opacity-90">Total amount</p>
+                  <p className="mt-2 text-3xl font-bold tracking-tight truncate">
+                    {formatCurrency(sale.totalAmount)}
+                  </p>
+                </div>
+                <div className="absolute -right-6 -top-6 z-0 h-32 w-32 rounded-full bg-white/10 blur-2xl"></div>
+              </div>
+
+              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-400 to-indigo-600 p-6 shadow-lg shadow-indigo-500/20 text-white transition-transform hover:-translate-y-1">
+                <div className="relative z-10">
+                  <p className="text-sm font-medium opacity-90">Paid amount</p>
+                  <p className="mt-2 text-3xl font-bold tracking-tight truncate">
+                    {formatCurrency(sale.paidAmount)}
+                  </p>
+                </div>
+                <div className="absolute -right-6 -top-6 z-0 h-32 w-32 rounded-full bg-white/10 blur-2xl"></div>
+              </div>
+
+              <div className={`relative overflow-hidden rounded-3xl p-6 shadow-lg transition-transform hover:-translate-y-1 ${sale.dueAmount > 0
+                ? 'bg-gradient-to-br from-amber-400 to-amber-600 shadow-amber-500/20 text-white'
+                : 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-emerald-500/20 text-white'
+                }`}>
+                <div className="relative z-10">
+                  <p className="text-sm font-medium opacity-90">Due amount</p>
+                  <p className="mt-2 text-3xl font-bold tracking-tight truncate">
+                    {formatCurrency(sale.dueAmount)}
+                  </p>
+                  {sale.dueAmount === 0 && (
+                    <p className="mt-2 text-xs font-medium opacity-90">Fully paid</p>
+                  )}
+                </div>
+                <div className="absolute -right-6 -top-6 z-0 h-32 w-32 rounded-full bg-white/10 blur-2xl"></div>
+              </div>
+
+              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-400 to-emerald-600 p-6 shadow-lg shadow-emerald-500/20 text-white transition-transform hover:-translate-y-1">
+                <div className="relative z-10">
+                  <p className="text-sm font-medium opacity-90">Total profit</p>
+                  <p className="mt-2 text-3xl font-bold tracking-tight truncate">
+                    {formatCurrency(sale.totalProfit)}
+                  </p>
+                </div>
+                <div className="absolute -right-6 -top-6 z-0 h-32 w-32 rounded-full bg-white/10 blur-2xl"></div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm mt-6">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50/80">
+                    <tr className="text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+                      <th className="px-4 py-3">Product</th>
+                      <th className="px-4 py-3">Quantity</th>
+                      <th className="px-4 py-3">Unit price</th>
+                      <th className="px-4 py-3">Buy price</th>
+                      <th className="px-4 py-3">Line total</th>
+                      <th className="px-4 py-3">Line profit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {sale.items?.map((item) => (
+                      <tr key={item.id}>
+                        <td className="px-4 py-4">
+                          <div className="font-bold text-slate-900">
+                            {item.product?.name ?? `Product #${item.productId}`}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            {item.product?.sku ?? ''}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-slate-700">
+                          <span className="font-medium">{formatNumber(item.quantity)}</span> {item.product?.unit ?? ''}
+                        </td>
+                        <td className="px-4 py-4 text-slate-700 font-medium">
+                          {formatCurrency(item.unitPrice)}
+                        </td>
+                        <td className="px-4 py-4 text-slate-500">
+                          {formatCurrency(item.buyPrice)}
+                        </td>
+                        <td className="px-4 py-4 font-bold text-slate-900">
+                          {formatCurrency(item.lineTotal)}
+                        </td>
+                        <td className="px-4 py-4 font-bold text-emerald-600">
+                          {formatCurrency(item.lineProfit)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:border-slate-200 mt-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Note</p>
+              <p className="mt-1.5 text-sm font-medium leading-relaxed text-slate-800">
                 {sale.note || 'No note provided.'}
               </p>
             </div>
@@ -178,10 +256,10 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
               description="Collect additional payment against this sale and keep the due balance updated."
             >
               {sale.dueAmount > 0 ? (
-                <form onSubmit={handleReceivePayment} className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
+                <form onSubmit={handleReceivePayment} className="space-y-5">
+                  <div className="grid gap-5 md:grid-cols-3">
                     <label className="block space-y-2">
-                      <span className="text-sm font-medium text-slate-700">
+                      <span className="text-sm font-bold text-slate-700">
                         Payment amount
                       </span>
                       <div className="flex gap-2">
@@ -192,14 +270,14 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
                           max={sale.dueAmount}
                           value={paymentAmount}
                           onChange={(event) => setPaymentAmount(event.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                          className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
                           placeholder={`Max ${sale.dueAmount}`}
                           required
                         />
                         <button
                           type="button"
                           onClick={() => setPaymentAmount(sale.dueAmount.toFixed(2))}
-                          className="rounded-2xl border border-slate-200 px-4 py-3 text-xs font-medium text-slate-700"
+                          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-700 hover:bg-amber-100 transition-all shadow-sm"
                         >
                           Full due
                         </button>
@@ -207,35 +285,35 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
                     </label>
 
                     <label className="block space-y-2">
-                      <span className="text-sm font-medium text-slate-700">
+                      <span className="text-sm font-bold text-slate-700">
                         Payment date
                       </span>
                       <input
                         type="datetime-local"
                         value={paymentDate}
                         onChange={(event) => setPaymentDate(event.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                        className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                         required
                       />
                     </label>
 
-                    <div className="rounded-2xl bg-amber-50 p-4 text-amber-900">
-                      <p className="text-sm">Outstanding due</p>
-                      <p className="mt-2 text-2xl font-semibold">
+                    <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-4 text-amber-900 shadow-sm">
+                      <p className="text-sm font-bold">Outstanding due</p>
+                      <p className="mt-2 text-2xl font-bold tracking-tight">
                         {formatCurrency(sale.dueAmount)}
                       </p>
                     </div>
                   </div>
 
                   <label className="block space-y-2">
-                    <span className="text-sm font-medium text-slate-700">
+                    <span className="text-sm font-bold text-slate-700">
                       Note
                     </span>
                     <textarea
                       value={paymentNote}
                       onChange={(event) => setPaymentNote(event.target.value)}
                       rows={3}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                      className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                       placeholder="Optional payment note"
                     />
                   </label>
@@ -243,7 +321,7 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
                   <button
                     type="submit"
                     disabled={isSubmittingPayment}
-                    className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
+                    className="rounded-2xl bg-slate-900 px-6 py-4 text-sm font-bold text-white shadow-md transition-all hover:bg-slate-800 hover:shadow-lg disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
                   >
                     {isSubmittingPayment ? 'Saving payment...' : 'Receive payment'}
                   </button>
@@ -261,25 +339,25 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
               description="Every payment collected for this sale is listed here."
             >
               {sale.payments && sale.payments.length > 0 ? (
-                <div className="overflow-x-auto">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead>
-                      <tr className="text-left text-slate-500">
-                        <th className="px-3 py-3 font-medium">Payment Date</th>
-                        <th className="px-3 py-3 font-medium">Amount</th>
-                        <th className="px-3 py-3 font-medium">Note</th>
+                    <thead className="bg-slate-50/80">
+                      <tr className="text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <th className="px-4 py-3">Payment Date</th>
+                        <th className="px-4 py-3">Amount</th>
+                        <th className="px-4 py-3">Note</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 bg-white">
                       {sale.payments.map((payment) => (
                         <tr key={payment.id}>
-                          <td className="px-3 py-4 text-slate-700">
+                          <td className="px-4 py-4 text-slate-700">
                             {formatDateTime(payment.paymentDate)}
                           </td>
-                          <td className="px-3 py-4 font-medium text-slate-900">
+                          <td className="px-4 py-4 font-bold text-slate-900">
                             {formatCurrency(payment.amount)}
                           </td>
-                          <td className="px-3 py-4 text-slate-700">
+                          <td className="px-4 py-4 text-slate-600">
                             {payment.note || 'No note provided.'}
                           </td>
                         </tr>
@@ -295,49 +373,6 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
               )}
             </PageCard>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead>
-                  <tr className="text-left text-slate-500">
-                    <th className="px-3 py-3 font-medium">Product</th>
-                    <th className="px-3 py-3 font-medium">Quantity</th>
-                    <th className="px-3 py-3 font-medium">Unit price</th>
-                    <th className="px-3 py-3 font-medium">Buy price</th>
-                    <th className="px-3 py-3 font-medium">Line total</th>
-                    <th className="px-3 py-3 font-medium">Line profit</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {sale.items?.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-3 py-4">
-                        <div className="font-medium text-slate-900">
-                          {item.product?.name ?? `Product #${item.productId}`}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {item.product?.sku ?? ''}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4 text-slate-700">
-                        {formatNumber(item.quantity)} {item.product?.unit ?? ''}
-                      </td>
-                      <td className="px-3 py-4 text-slate-700">
-                        {formatCurrency(item.unitPrice)}
-                      </td>
-                      <td className="px-3 py-4 text-slate-700">
-                        {formatCurrency(item.buyPrice)}
-                      </td>
-                      <td className="px-3 py-4 font-medium text-slate-900">
-                        {formatCurrency(item.lineTotal)}
-                      </td>
-                      <td className="px-3 py-4 font-medium text-slate-900">
-                        {formatCurrency(item.lineProfit)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
         ) : null}
       </PageCard>
@@ -347,9 +382,9 @@ export function SaleDetailsPage({ saleId }: { saleId: number }) {
 
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-4">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-slate-900">{value}</p>
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:border-slate-200">
+      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p>
+      <p className="mt-1.5 text-base font-bold text-slate-900 truncate">{value}</p>
     </div>
   );
 }

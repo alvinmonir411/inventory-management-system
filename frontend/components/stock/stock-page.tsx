@@ -1,41 +1,49 @@
 'use client';
 
 import {
-  Dispatch,
   FormEvent,
-  ReactNode,
-  SetStateAction,
-  useEffect,
   useMemo,
   useRef,
   useState,
+  useEffect,
+  useCallback,
 } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getCompanies } from '@/lib/api/companies';
-import { getProducts } from '@/lib/api/products';
+import { useDebounce } from '@/hooks/use-debounce';
+import { 
+  useCompanies, 
+  useProducts, 
+  useStockSummary, 
+  useLowStock, 
+  useZeroStock, 
+  useStockMovements 
+} from '@/hooks/use-stock-queries';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   addAdjustment,
   addOpeningStock,
   addStockIn,
-  getLowStockProducts,
-  getStockMovements,
-  getStockSummary,
-  getZeroStockProducts,
 } from '@/lib/api/stock';
-import { LoadingBlock } from '@/components/ui/loading-block';
-import { Pagination } from '@/components/ui/pagination';
 import { PageCard } from '@/components/ui/page-card';
-import { StateMessage } from '@/components/ui/state-message';
+import { Pagination } from '@/components/ui/pagination';
 import { useToastNotification } from '@/components/ui/toast-provider';
 import { StockMovementList } from './stock-movement-list';
 import { formatNumber } from '@/lib/utils/format';
+import { StockSummaryTable } from './StockSummaryTable';
+import { MovementForm } from './MovementForm';
+import { 
+  MiniMetric, 
+  QuickRangeChip, 
+  SectionCollapsedNotice, 
+  SectionStatusBadge, 
+  SectionToggleButton,
+  SkeletonLoader 
+} from './stock-ui';
 import type {
-  Company,
-  Product,
-  StockMovement,
   StockMovementQuery,
   StockMovementType,
   StockSummaryItem,
+  Product,
 } from '@/types/api';
 
 type MovementActionMode = 'opening' | 'stock-in' | 'adjustment';
@@ -49,10 +57,8 @@ type MovementFormState = {
 
 const stockTablePageSize = 10;
 const movementPageSize = 12;
-const movementTypeOptions: Array<{
-  value: StockMovementType;
-  label: string;
-}> = [
+
+const movementTypeOptions: Array<{ value: StockMovementType; label: string }> = [
   { value: 'OPENING', label: 'Opening' },
   { value: 'STOCK_IN', label: 'Stock In' },
   { value: 'SALE_OUT', label: 'Sale Out' },
@@ -60,54 +66,24 @@ const movementTypeOptions: Array<{
   { value: 'ADJUSTMENT', label: 'Adjustment' },
 ];
 
-const movementActionMeta: Record<
-  MovementActionMode,
-  {
-    eyebrow: string;
-    title: string;
-    description: string;
-    submitLabel: string;
-    quantityHint: string;
-    notePlaceholder: string;
-    buttonClassName: string;
-    badgeClassName: string;
-  }
-> = {
+const movementActionMeta: Record<MovementActionMode, any> = {
   opening: {
-    eyebrow: 'Opening stock',
     title: 'Add Opening Stock',
-    description:
-      'Use this when you are setting the starting balance for a product before regular transactions begin.',
-    submitLabel: 'Save opening stock',
     quantityHint: 'Enter the opening balance that should become the starting stock.',
     notePlaceholder: 'Optional note about the opening balance',
-    buttonClassName:
-      'border-cyan-200 bg-cyan-50 text-cyan-900 hover:border-cyan-300 hover:bg-cyan-100',
-    badgeClassName: 'bg-cyan-100 text-cyan-800',
+    submitLabel: 'Save opening stock',
   },
   'stock-in': {
-    eyebrow: 'Stock received',
     title: 'Add Stock In',
-    description:
-      'Record new stock received from suppliers, warehouse transfers, or any other incoming inventory.',
-    submitLabel: 'Save stock in',
     quantityHint: 'Enter the quantity that was added to stock.',
     notePlaceholder: 'Optional note about the incoming stock',
-    buttonClassName:
-      'border-emerald-200 bg-emerald-50 text-emerald-900 hover:border-emerald-300 hover:bg-emerald-100',
-    badgeClassName: 'bg-emerald-100 text-emerald-800',
+    submitLabel: 'Save stock in',
   },
   adjustment: {
-    eyebrow: 'Manual correction',
     title: 'Add Adjustment',
-    description:
-      'Use a positive value to increase stock or a negative value to reduce stock after a physical recount.',
-    submitLabel: 'Save adjustment',
     quantityHint: 'Positive adds stock. Negative removes stock.',
     notePlaceholder: 'Optional note explaining the stock correction',
-    buttonClassName:
-      'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300 hover:bg-amber-100',
-    badgeClassName: 'bg-amber-100 text-amber-800',
+    submitLabel: 'Save adjustment',
   },
 };
 
@@ -127,18 +103,9 @@ function createInitialMovementForm(): MovementFormState {
 }
 
 function parseId(value: string | null) {
-  if (!value) {
-    return null;
-  }
-
+  if (!value) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseMovementType(value: string | null): StockMovementType | null {
-  return movementTypeOptions.some((option) => option.value === value)
-    ? (value as StockMovementType)
-    : null;
 }
 
 function getDateInputValue(value: Date) {
@@ -154,53 +121,8 @@ function getEndOfDayIso(value: string) {
   return value ? new Date(`${value}T23:59:59.999`).toISOString() : undefined;
 }
 
-function normalizeMatchValue(value: string | null | undefined) {
-  return value?.trim().toLowerCase() ?? '';
-}
-
-function getStockMatchScore(
-  item: StockSummaryItem,
-  keyword: string,
-  selectedCompanyId: number | null,
-) {
-  const normalizedKeyword = normalizeMatchValue(keyword);
-  const sku = normalizeMatchValue(item.sku);
-  const productName = normalizeMatchValue(item.productName);
-  const unit = normalizeMatchValue(item.unit);
-  const companyName = normalizeMatchValue(item.company?.name);
-  const companyCode = normalizeMatchValue(item.company?.code);
-
-  let score = 0;
-
-  if (sku === normalizedKeyword) score += 100;
-  else if (sku.startsWith(normalizedKeyword)) score += 80;
-  else if (sku.includes(normalizedKeyword)) score += 55;
-
-  if (productName === normalizedKeyword) score += 95;
-  else if (productName.startsWith(normalizedKeyword)) score += 85;
-  else if (productName.includes(normalizedKeyword)) score += 60;
-
-  if (companyCode === normalizedKeyword) score += 70;
-  else if (companyCode.startsWith(normalizedKeyword)) score += 50;
-  else if (companyCode.includes(normalizedKeyword)) score += 35;
-
-  if (companyName === normalizedKeyword) score += 65;
-  else if (companyName.startsWith(normalizedKeyword)) score += 45;
-  else if (companyName.includes(normalizedKeyword)) score += 30;
-
-  if (unit === normalizedKeyword) score += 20;
-  else if (unit.includes(normalizedKeyword)) score += 10;
-
-  if (selectedCompanyId && item.companyId === selectedCompanyId) {
-    score += 15;
-  }
-
-  return score;
-}
-
 function isSameDay(value: string, targetDate: Date) {
   const date = new Date(value);
-
   return (
     date.getFullYear() === targetDate.getFullYear() &&
     date.getMonth() === targetDate.getMonth() &&
@@ -210,14 +132,10 @@ function isSameDay(value: string, targetDate: Date) {
 
 export function StockPage() {
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const view = searchParams.get('view');
-  const showAllCompanyAlerts = view === 'alerts';
-  const requestedCompanyIdRef = useRef<number | null>(
-    parseId(searchParams.get('companyId')),
-  );
-  const requestedProductIdRef = useRef<number | null>(
-    parseId(searchParams.get('productId')),
-  );
+  
+  // Refs for scrolling and auto-match
   const currentStockSectionRef = useRef<HTMLDivElement | null>(null);
   const movementHistorySectionRef = useRef<HTMLDivElement | null>(null);
   const alertsSectionRef = useRef<HTMLDivElement | null>(null);
@@ -225,684 +143,168 @@ export function StockPage() {
   const zeroStockSectionRef = useRef<HTMLDivElement | null>(null);
   const quickActionSectionRef = useRef<HTMLDivElement | null>(null);
   const hasAutoScrolledRef = useRef(false);
-  const latestAutoMatchRequestRef = useRef(0);
-  const latestCompanyDataRequestRef = useRef(0);
-  const latestMovementRequestRef = useRef(0);
-  const selectedCompanyIdRef = useRef<number | null>(null);
-  const selectedProductIdRef = useRef<number | null>(null);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [summary, setSummary] = useState<StockSummaryItem[]>([]);
-  const [lowStock, setLowStock] = useState<StockSummaryItem[]>([]);
-  const [zeroStock, setZeroStock] = useState<StockSummaryItem[]>([]);
-  const [movements, setMovements] = useState<StockMovement[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+
+  // Filter States
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') ?? '');
-  const normalizedSearchTerm = searchTerm.trim();
-  const [selectedType, setSelectedType] = useState<StockMovementType | ''>(
-    parseMovementType(searchParams.get('type')) ?? '',
-  );
+  const debouncedSearch = useDebounce(searchTerm, 400);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(parseId(searchParams.get('companyId')));
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(parseId(searchParams.get('productId')));
+  const [selectedType, setSelectedType] = useState<StockMovementType | ''>((searchParams.get('type') as StockMovementType) || '');
   const [fromDate, setFromDate] = useState(searchParams.get('fromDate') ?? '');
   const [toDate, setToDate] = useState(searchParams.get('toDate') ?? '');
-  const [activeAction, setActiveAction] = useState<MovementActionMode>('stock-in');
-  const [openingForm, setOpeningForm] = useState<MovementFormState>(() =>
-    createInitialMovementForm(),
-  );
-  const [stockInForm, setStockInForm] = useState<MovementFormState>(() =>
-    createInitialMovementForm(),
-  );
-  const [adjustmentForm, setAdjustmentForm] = useState<MovementFormState>(() =>
-    createInitialMovementForm(),
-  );
+
+  // Pagination States
   const [summaryPage, setSummaryPage] = useState(1);
   const [lowStockPage, setLowStockPage] = useState(1);
   const [zeroStockPage, setZeroStockPage] = useState(1);
   const [movementPage, setMovementPage] = useState(1);
-  const [isCurrentStockOpen, setIsCurrentStockOpen] = useState(
-    () => view === 'company' || view === 'current-stock' || !view,
-  );
-  const [isMovementHistoryOpen, setIsMovementHistoryOpen] = useState(
-    () => view === 'movements' || view === 'history' || !view,
-  );
-  const [isLowStockOpen, setIsLowStockOpen] = useState(
-    () => view === 'low-stock' || view === 'alerts',
-  );
-  const [isZeroStockOpen, setIsZeroStockOpen] = useState(
-    () => view === 'zero-stock' || view === 'alerts',
-  );
-  const [isLoading, setIsLoading] = useState(true);
+
+  // Section States
+  const [isCurrentStockOpen, setIsCurrentStockOpen] = useState(() => !view || view === 'current-stock' || view === 'company');
+  const [isMovementHistoryOpen, setIsMovementHistoryOpen] = useState(() => !view || view === 'history' || view === 'movements');
+  const [isLowStockOpen, setIsLowStockOpen] = useState(() => view === 'low-stock' || view === 'alerts');
+  const [isZeroStockOpen, setIsZeroStockOpen] = useState(() => view === 'zero-stock' || view === 'alerts');
+
+  // Form States
+  const [activeAction, setActiveAction] = useState<MovementActionMode>('stock-in');
+  const [openingForm, setOpeningForm] = useState(createInitialMovementForm);
+  const [stockInForm, setStockInForm] = useState(createInitialMovementForm);
+  const [adjustmentForm, setAdjustmentForm] = useState(createInitialMovementForm);
   const [isSubmitting, setIsSubmitting] = useState<MovementActionMode | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  useToastNotification({
-    message: error,
-    title: 'Could not load stock data',
-    tone: 'error',
-  });
-  useToastNotification({
-    message: formError,
-    title: 'Could not save stock movement',
-    tone: 'error',
-  });
-  useToastNotification({
-    message: successMessage,
-    title: 'Saved',
-    tone: 'success',
-  });
+  // Data Queries
+  const { data: companies = [], isLoading: isLoadingCompanies } = useCompanies();
+  const { data: products = [], isLoading: isLoadingProducts } = useProducts(selectedCompanyId);
+  const { data: summary = [], isFetching: isFetchingSummary } = useStockSummary(selectedCompanyId, debouncedSearch);
+  const { data: lowStock = [], isFetching: isFetchingLowStock } = useLowStock(selectedCompanyId, debouncedSearch);
+  const { data: zeroStock = [], isFetching: isFetchingZeroStock } = useZeroStock(selectedCompanyId, debouncedSearch);
 
+  const movementFilters = useMemo(() => ({
+    productId: selectedProductId ?? undefined,
+    type: selectedType || undefined,
+    fromDate: getStartOfDayIso(fromDate),
+    toDate: getEndOfDayIso(toDate),
+    search: debouncedSearch || undefined,
+  }), [selectedProductId, selectedType, fromDate, toDate, debouncedSearch]);
+
+  const { data: movements = [], isFetching: isFetchingMovements } = useStockMovements(selectedCompanyId, movementFilters);
+
+  // Notifications
+  useToastNotification({ message: formError, title: 'Error', tone: 'error' });
+  useToastNotification({ message: successMessage, title: 'Success', tone: 'success' });
+
+  // Auto-fill company from first load if none selected
   useEffect(() => {
-    async function loadCompaniesList() {
-      try {
-        setIsLoading(true);
-        setError(null);
+    if (!selectedCompanyId && companies.length > 0 && view !== 'alerts') {
+      setSelectedCompanyId(companies[0].id);
+    }
+  }, [companies, selectedCompanyId, view]);
 
-        const companyData = await getCompanies();
-        const requestedCompanyId = requestedCompanyIdRef.current;
-        const defaultCompanyId = showAllCompanyAlerts ? null : (companyData[0]?.id ?? null);
-        const nextCompanyId =
-          requestedCompanyId &&
-          companyData.some((company) => company.id === requestedCompanyId)
-            ? requestedCompanyId
-            : defaultCompanyId;
+  // Handle URL params for scroll
+  useEffect(() => {
+    if (!hasAutoScrolledRef.current && view) {
+      const target = {
+        'current-stock': currentStockSectionRef,
+        'company': currentStockSectionRef,
+        'history': movementHistorySectionRef,
+        'movements': movementHistorySectionRef,
+        'low-stock': lowStockSectionRef,
+        'zero-stock': zeroStockSectionRef,
+        'alerts': alertsSectionRef,
+      }[view]?.current;
 
-        setCompanies(companyData);
-        setSelectedCompanyId(nextCompanyId);
-        setSelectedProductId(null);
-      } catch (loadError) {
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : 'Failed to load companies.',
-        );
-      } finally {
-        setIsLoading(false);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        hasAutoScrolledRef.current = true;
       }
-    }
-
-    void loadCompaniesList();
-  }, [showAllCompanyAlerts]);
-
-  useEffect(() => {
-    if (view === 'company' || view === 'current-stock') {
-      setIsCurrentStockOpen(true);
-    }
-
-    if (view === 'movements' || view === 'history') {
-      setIsMovementHistoryOpen(true);
-    }
-
-    if (view === 'low-stock') {
-      setIsLowStockOpen(true);
-    }
-
-    if (view === 'zero-stock') {
-      setIsZeroStockOpen(true);
-    }
-
-    if (view === 'alerts') {
-      setIsLowStockOpen(true);
-      setIsZeroStockOpen(true);
     }
   }, [view]);
 
-  useEffect(() => {
-    async function loadCompanyData() {
-      const requestId = latestCompanyDataRequestRef.current + 1;
-      latestCompanyDataRequestRef.current = requestId;
-      const requestedCompanyId = selectedCompanyId;
-      const requestedProductId = selectedProductId;
+  // Memoized Derived Values
+  const selectedCompany = useMemo(() => companies.find(c => c.id === selectedCompanyId), [companies, selectedCompanyId]);
+  
+  const filteredSummary = useMemo(() => 
+    selectedProductId ? summary.filter(i => i.productId === selectedProductId) : summary,
+  [summary, selectedProductId]);
 
-      try {
-        setIsLoading(true);
-        setError(null);
+  const filteredLowStock = useMemo(() => 
+    selectedProductId ? lowStock.filter(i => i.productId === selectedProductId) : lowStock,
+  [lowStock, selectedProductId]);
 
-        const [productData, summaryData, lowStockData, zeroStockData] =
-          await Promise.all([
-            requestedCompanyId ? getProducts(requestedCompanyId) : Promise.resolve([]),
-            getStockSummary(
-              requestedCompanyId ?? undefined,
-              normalizedSearchTerm || undefined,
-            ),
-            getLowStockProducts(
-              requestedCompanyId ?? undefined,
-              10,
-              normalizedSearchTerm || undefined,
-            ),
-            getZeroStockProducts(
-              requestedCompanyId ?? undefined,
-              normalizedSearchTerm || undefined,
-            ),
-          ]);
+  const filteredZeroStock = useMemo(() => 
+    selectedProductId ? zeroStock.filter(i => i.productId === selectedProductId) : zeroStock,
+  [zeroStock, selectedProductId]);
 
-        if (requestId !== latestCompanyDataRequestRef.current) {
-          return;
-        }
-
-        setProducts(productData);
-        setSummary(summaryData);
-        setLowStock(lowStockData);
-        setZeroStock(zeroStockData);
-
-        const nextProductId =
-          requestedCompanyId &&
-          requestedProductId &&
-          productData.some((product) => product.id === requestedProductId)
-            ? requestedProductId
-            : requestedCompanyId &&
-                requestedProductIdRef.current &&
-                productData.some(
-                  (product) => product.id === requestedProductIdRef.current,
-                )
-              ? requestedProductIdRef.current
-              : null;
-
-        setSelectedProductId(nextProductId);
-        requestedProductIdRef.current = null;
-
-        const getDefaultFormProductValue = (currentProductId: string) => {
-          if (nextProductId) {
-            return String(nextProductId);
-          }
-
-          if (
-            currentProductId &&
-            productData.some((product) => product.id === Number(currentProductId))
-          ) {
-            return currentProductId;
-          }
-
-          return productData[0] ? String(productData[0].id) : '';
-        };
-
-        setOpeningForm((current) => ({
-          ...current,
-          productId: getDefaultFormProductValue(current.productId),
-        }));
-        setStockInForm((current) => ({
-          ...current,
-          productId: getDefaultFormProductValue(current.productId),
-        }));
-        setAdjustmentForm((current) => ({
-          ...current,
-          productId: getDefaultFormProductValue(current.productId),
-        }));
-      } catch (loadError) {
-        setError(
-          loadError instanceof Error ? loadError.message : 'Failed to load stock data.',
-        );
-      } finally {
-        if (requestId === latestCompanyDataRequestRef.current) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void loadCompanyData();
-  }, [normalizedSearchTerm, selectedCompanyId, selectedProductId]);
-
-  useEffect(() => {
-    async function loadMovements() {
-      const requestId = latestMovementRequestRef.current + 1;
-      latestMovementRequestRef.current = requestId;
-      const requestedCompanyId = selectedCompanyId;
-
-      if (!requestedCompanyId) {
-        setMovements([]);
-        return;
-      }
-
-      try {
-        setError(null);
-
-        const movementQuery: StockMovementQuery = {
-          productId: selectedProductId ?? undefined,
-          type: selectedType || undefined,
-          fromDate: getStartOfDayIso(fromDate),
-          toDate: getEndOfDayIso(toDate),
-          search: normalizedSearchTerm || undefined,
-        };
-        const movementData = await getStockMovements(
-          requestedCompanyId,
-          movementQuery,
-        );
-
-        if (requestId !== latestMovementRequestRef.current) {
-          return;
-        }
-
-        setMovements(movementData);
-      } catch (loadError) {
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : 'Failed to load stock movements.',
-        );
-      }
-    }
-
-    void loadMovements();
-  }, [fromDate, normalizedSearchTerm, selectedCompanyId, selectedProductId, selectedType, toDate]);
-
-  useEffect(() => {
-    selectedCompanyIdRef.current = selectedCompanyId;
-    selectedProductIdRef.current = selectedProductId;
-  }, [selectedCompanyId, selectedProductId]);
-
-  useEffect(() => {
-    async function autoFillMatchedStock() {
-      if (normalizedSearchTerm.length < 2) {
-        latestAutoMatchRequestRef.current += 1;
-        return;
-      }
-
-      const requestId = latestAutoMatchRequestRef.current + 1;
-      latestAutoMatchRequestRef.current = requestId;
-
-      try {
-        const matchedItems = await getStockSummary(undefined, normalizedSearchTerm);
-
-        if (requestId !== latestAutoMatchRequestRef.current) {
-          return;
-        }
-
-        const rankedItems = matchedItems
-          .map((item) => ({
-            item,
-            score: getStockMatchScore(
-              item,
-              normalizedSearchTerm,
-              selectedCompanyIdRef.current,
-            ),
-          }))
-          .filter((entry) => entry.score > 0)
-          .sort((left, right) => right.score - left.score);
-
-        const bestMatch = rankedItems[0]?.item;
-
-        if (!bestMatch) {
-          return;
-        }
-
-        if (
-          bestMatch.companyId === selectedCompanyIdRef.current &&
-          bestMatch.productId === selectedProductIdRef.current
-        ) {
-          return;
-        }
-
-        setSummaryPage(1);
-        setLowStockPage(1);
-        setZeroStockPage(1);
-        setMovementPage(1);
-        setSelectedCompanyId(bestMatch.companyId);
-        setSelectedProductId(bestMatch.productId);
-      } catch {
-        // Keep manual filters unchanged if auto-match lookup fails.
-      }
-    }
-
-    void autoFillMatchedStock();
-  }, [normalizedSearchTerm]);
-
-  useEffect(() => {
-    if (!selectedCompanyId) {
-      setActiveAction('stock-in');
-    }
-  }, [selectedCompanyId]);
-
-  useEffect(() => {
-    if (isLoading || error || hasAutoScrolledRef.current) {
-      return;
-    }
-
-    const targetSection =
-      view === 'company' || view === 'current-stock'
-        ? currentStockSectionRef.current
-        : view === 'movements' || view === 'history'
-          ? movementHistorySectionRef.current
-          : view === 'low-stock'
-            ? lowStockSectionRef.current
-            : view === 'zero-stock'
-              ? zeroStockSectionRef.current
-              : view === 'alerts'
-                ? alertsSectionRef.current
-                : null;
-
-    if (!targetSection) {
-      return;
-    }
-
-    targetSection.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-    hasAutoScrolledRef.current = true;
-  }, [error, isLoading, view]);
-
-  const defaultCompanyId = showAllCompanyAlerts ? null : (companies[0]?.id ?? null);
-  const selectedCompany = useMemo(
-    () => companies.find((company) => company.id === selectedCompanyId) ?? null,
-    [companies, selectedCompanyId],
-  );
-  const filteredSummary = useMemo(() => {
-    if (!selectedProductId) {
-      return summary;
-    }
-
-    return summary.filter((item) => item.productId === selectedProductId);
-  }, [selectedProductId, summary]);
-  const filteredLowStock = useMemo(() => {
-    if (!selectedProductId) {
-      return lowStock;
-    }
-
-    return lowStock.filter((item) => item.productId === selectedProductId);
-  }, [lowStock, selectedProductId]);
-  const filteredZeroStock = useMemo(() => {
-    if (!selectedProductId) {
-      return zeroStock;
-    }
-
-    return zeroStock.filter((item) => item.productId === selectedProductId);
-  }, [selectedProductId, zeroStock]);
   const paginatedSummary = useMemo(() => {
-    const startIndex = (summaryPage - 1) * stockTablePageSize;
-    return filteredSummary.slice(startIndex, startIndex + stockTablePageSize);
+    const start = (summaryPage - 1) * stockTablePageSize;
+    return filteredSummary.slice(start, start + stockTablePageSize);
   }, [filteredSummary, summaryPage]);
-  const paginatedLowStock = useMemo(() => {
-    const startIndex = (lowStockPage - 1) * stockTablePageSize;
-    return filteredLowStock.slice(startIndex, startIndex + stockTablePageSize);
-  }, [filteredLowStock, lowStockPage]);
-  const paginatedZeroStock = useMemo(() => {
-    const startIndex = (zeroStockPage - 1) * stockTablePageSize;
-    return filteredZeroStock.slice(startIndex, startIndex + stockTablePageSize);
-  }, [filteredZeroStock, zeroStockPage]);
+
   const paginatedMovements = useMemo(() => {
-    const startIndex = (movementPage - 1) * movementPageSize;
-    return movements.slice(startIndex, startIndex + movementPageSize);
-  }, [movementPage, movements]);
-  const totalVisibleQuantity = useMemo(
-    () =>
-      filteredSummary.reduce(
-        (sum, item) => sum + Math.max(Number(item.currentStock) || 0, 0),
-        0,
-      ),
-    [filteredSummary],
-  );
-  const totalVisibleInvestment = useMemo(
-    () =>
-      filteredSummary.reduce(
-        (sum, item) => sum + Math.max(Number(item.investmentValue) || 0, 0),
-        0,
-      ),
-    [filteredSummary],
-  );
-  const activeForm =
-    activeAction === 'opening'
-      ? openingForm
-      : activeAction === 'adjustment'
-        ? adjustmentForm
-        : stockInForm;
-  const activeFormProductId = activeForm.productId ? Number(activeForm.productId) : null;
-  const focusedProduct = useMemo(
-    () =>
-      products.find((product) => product.id === activeFormProductId) ??
-      products.find((product) => product.id === selectedProductId) ??
-      null,
-    [activeFormProductId, products, selectedProductId],
-  );
-  const focusedStockItem = useMemo(
-    () =>
-      summary.find((item) => item.productId === activeFormProductId) ??
-      summary.find((item) => item.productId === selectedProductId) ??
-      null,
-    [activeFormProductId, selectedProductId, summary],
-  );
-  const quickPickProducts = useMemo(() => {
-    const candidateIds = [
-      ...filteredLowStock.map((item) => item.productId),
-      ...filteredSummary.map((item) => item.productId),
-    ];
-    const seen = new Set<number>();
-    const picks: Product[] = [];
+    const start = (movementPage - 1) * movementPageSize;
+    return movements.slice(start, start + movementPageSize);
+  }, [movements, movementPage]);
 
-    for (const productId of candidateIds) {
-      if (seen.has(productId)) {
-        continue;
-      }
-
-      const product = products.find((entry) => entry.id === productId);
-      if (!product) {
-        continue;
-      }
-
-      seen.add(productId);
-      picks.push(product);
-
-      if (picks.length === 6) {
-        break;
-      }
-    }
-
-    if (picks.length === 0) {
-      return products.slice(0, 6);
-    }
-
-    return picks;
-  }, [filteredLowStock, filteredSummary, products]);
-  const todayMovementCount = useMemo(() => {
+  const stats = useMemo(() => {
     const today = new Date();
-    return movements.filter((movement) => isSameDay(movement.movementDate, today)).length;
-  }, [movements]);
-  const todayStockInQuantity = useMemo(() => {
-    const today = new Date();
-    return movements.reduce((sum, movement) => {
-      if (!isSameDay(movement.movementDate, today)) {
-        return sum;
-      }
+    const todayMovements = movements.filter(m => isSameDay(m.movementDate, today));
+    
+    return {
+      totalQty: filteredSummary.reduce((s, i) => s + (i.currentStock || 0), 0),
+      totalValue: filteredSummary.reduce((s, i) => s + (i.investmentValue || 0), 0),
+      todayCount: todayMovements.length,
+      todayIn: todayMovements.reduce((s, m) => ['OPENING', 'STOCK_IN', 'RETURN_IN'].includes(m.type) ? s + (m.quantity || 0) : s, 0),
+      todayOut: todayMovements.reduce((s, m) => m.type === 'SALE_OUT' || (m.type === 'ADJUSTMENT' && m.quantity < 0) ? s + Math.abs(m.quantity) : s, 0),
+    };
+  }, [filteredSummary, movements]);
 
-      return movement.type === 'OPENING' || movement.type === 'STOCK_IN' || movement.type === 'RETURN_IN'
-        ? sum + Math.max(Number(movement.quantity) || 0, 0)
-        : sum;
-    }, 0);
-  }, [movements]);
-  const todayStockOutQuantity = useMemo(() => {
-    const today = new Date();
-    return movements.reduce((sum, movement) => {
-      if (!isSameDay(movement.movementDate, today)) {
-        return sum;
-      }
-
-      if (movement.type === 'SALE_OUT') {
-        return sum + Math.abs(Number(movement.quantity) || 0);
-      }
-
-      if (movement.type === 'ADJUSTMENT' && Number(movement.quantity) < 0) {
-        return sum + Math.abs(Number(movement.quantity) || 0);
-      }
-
-      return sum;
-    }, 0);
-  }, [movements]);
-  const activeFilterCount = [
-    normalizedSearchTerm,
-    selectedCompanyId !== defaultCompanyId ? 'company' : '',
-    selectedProductId ? 'product' : '',
-    selectedType,
-    fromDate,
-    toDate,
-  ].filter(Boolean).length;
-  const hasMovementFilters = Boolean(selectedType || fromDate || toDate);
-  const hasAdvancedFilters = activeFilterCount > 0;
-
-  function resetPagination() {
+  // Handlers
+  const handleSearchChange = (val: string) => {
+    setSearchTerm(val);
     setSummaryPage(1);
-    setLowStockPage(1);
-    setZeroStockPage(1);
     setMovementPage(1);
-  }
+  };
 
-  function scrollToSection(section: HTMLDivElement | null) {
-    section?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-  }
-
-  function openSection(
-    setIsOpen: Dispatch<SetStateAction<boolean>>,
-    section: HTMLDivElement | null,
-  ) {
-    setIsOpen(true);
-    globalThis.setTimeout(() => {
-      scrollToSection(section);
-    }, 0);
-  }
-
-  function activateAction(mode: MovementActionMode) {
-    if (!selectedCompanyId) {
-      setFormError('Select a company first to record stock changes.');
-      return;
-    }
-
-    setFormError(null);
-    setActiveAction(mode);
-  }
-
-  function updateActiveForm(
-    updater: (current: MovementFormState) => MovementFormState,
-  ) {
-    if (activeAction === 'opening') {
-      setOpeningForm(updater);
-      return;
-    }
-
-    if (activeAction === 'adjustment') {
-      setAdjustmentForm(updater);
-      return;
-    }
-
-    setStockInForm(updater);
-  }
-
-  function chooseQuickProduct(productId: number) {
-    setSelectedProductId(productId);
-    updateActiveForm((current) => ({
-      ...current,
-      productId: String(productId),
-    }));
-  }
-
-  function applyQuantityPreset(quantity: string) {
-    updateActiveForm((current) => ({
-      ...current,
-      quantity,
-    }));
-  }
-
-  function clearWorkspaceFilters() {
-    resetPagination();
+  const clearFilters = () => {
     setSearchTerm('');
-    setSelectedCompanyId(defaultCompanyId);
+    setSelectedCompanyId(companies[0]?.id ?? null);
     setSelectedProductId(null);
     setSelectedType('');
     setFromDate('');
     setToDate('');
-  }
-
-  function applyTodayDateFilter() {
-    const today = getDateInputValue(new Date());
+    setSummaryPage(1);
     setMovementPage(1);
-    setFromDate(today);
-    setToDate(today);
-  }
+  };
 
-  function applyLast7DaysFilter() {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - 6);
-    setMovementPage(1);
-    setFromDate(getDateInputValue(startDate));
-    setToDate(getDateInputValue(endDate));
-  }
-
-  function applyThisMonthFilter() {
-    const today = new Date();
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    setMovementPage(1);
-    setFromDate(getDateInputValue(monthStart));
-    setToDate(getDateInputValue(today));
-  }
-
-  function handleQuickAction(productId: number, mode: MovementActionMode) {
+  const handleQuickAction = useCallback((productId: number, mode: MovementActionMode) => {
     if (!selectedCompanyId) {
-      setFormError('Select a company in the filter bar first.');
+      setFormError('Select a company first.');
       return;
     }
-    chooseQuickProduct(productId);
+    setSelectedProductId(productId);
     setActiveAction(mode);
-    globalThis.setTimeout(() => scrollToSection(quickActionSectionRef.current), 0);
-  }
+    const formUpdater = (curr: MovementFormState) => ({ ...curr, productId: String(productId) });
+    if (mode === 'opening') setOpeningForm(formUpdater);
+    else if (mode === 'stock-in') setStockInForm(formUpdater);
+    else setAdjustmentForm(formUpdater);
 
-  async function refreshStockData(companyId: number, productId: number | null) {
-    const movementQuery: StockMovementQuery = {
-      productId: productId ?? undefined,
-      type: selectedType || undefined,
-      fromDate: getStartOfDayIso(fromDate),
-      toDate: getEndOfDayIso(toDate),
-      search: normalizedSearchTerm || undefined,
-    };
+    quickActionSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [selectedCompanyId]);
 
-    const [summaryData, lowStockData, zeroStockData, movementData] =
-      await Promise.all([
-        getStockSummary(companyId, normalizedSearchTerm || undefined),
-        getLowStockProducts(companyId, 10, normalizedSearchTerm || undefined),
-        getZeroStockProducts(companyId, normalizedSearchTerm || undefined),
-        getStockMovements(companyId, movementQuery),
-      ]);
-
-    setSummary(summaryData);
-    setLowStock(lowStockData);
-    setZeroStock(zeroStockData);
-    setMovements(movementData);
-  }
-
-  async function submitMovement(
-    event: FormEvent<HTMLFormElement>,
-    mode: MovementActionMode,
-  ) {
+  const submitMovement = async (event: FormEvent<HTMLFormElement>, mode: MovementActionMode) => {
     event.preventDefault();
-    setFormError(null);
-    setSuccessMessage(null);
+    if (!selectedCompanyId) return;
 
-    if (!selectedCompanyId) {
-      setFormError('Please select a company first.');
-      return;
-    }
-
-    const form =
-      mode === 'opening'
-        ? openingForm
-        : mode === 'stock-in'
-          ? stockInForm
-          : adjustmentForm;
-
-    if (!form.productId) {
-      setFormError('Please select a product.');
-      return;
-    }
-
-    if (!form.quantity || Number.isNaN(Number(form.quantity))) {
-      setFormError('Please enter a valid quantity.');
+    const form = mode === 'opening' ? openingForm : mode === 'stock-in' ? stockInForm : adjustmentForm;
+    if (!form.productId || !form.quantity) {
+      setFormError('Product and quantity are required.');
       return;
     }
 
     try {
       setIsSubmitting(mode);
-
       const payload = {
         companyId: selectedCompanyId,
         productId: Number(form.productId),
@@ -911,1082 +313,253 @@ export function StockPage() {
         movementDate: new Date(form.movementDate).toISOString(),
       };
 
-      const resetForm = (current: MovementFormState) => ({
-        ...createInitialMovementForm(),
-        productId: selectedProductId ? String(selectedProductId) : current.productId,
-      });
+      if (mode === 'opening') await addOpeningStock(payload);
+      else if (mode === 'stock-in') await addStockIn(payload);
+      else await addAdjustment(payload);
 
-      if (mode === 'opening') {
-        await addOpeningStock(payload);
-        setOpeningForm((current) => resetForm(current));
-        setSuccessMessage('Opening stock added successfully.');
-      } else if (mode === 'stock-in') {
-        await addStockIn(payload);
-        setStockInForm((current) => resetForm(current));
-        setSuccessMessage('Stock-in movement added successfully.');
-      } else {
-        await addAdjustment(payload);
-        setAdjustmentForm((current) => resetForm(current));
-        setSuccessMessage('Stock adjustment saved successfully.');
-      }
+      setSuccessMessage('Stock movement recorded successfully.');
+      
+      // Intelligent invalidation
+      queryClient.invalidateQueries({ queryKey: ['stock', 'summary', selectedCompanyId] });
+      queryClient.invalidateQueries({ queryKey: ['stock', 'low', selectedCompanyId] });
+      queryClient.invalidateQueries({ queryKey: ['stock', 'zero', selectedCompanyId] });
+      queryClient.invalidateQueries({ queryKey: ['stock', 'movements', selectedCompanyId] });
 
-      await refreshStockData(selectedCompanyId, selectedProductId);
-      openSection(setIsMovementHistoryOpen, movementHistorySectionRef.current);
-    } catch (submitError) {
-      setFormError(
-        submitError instanceof Error
-          ? submitError.message
-          : 'Failed to save stock movement.',
-      );
+      // Reset form
+      const reset = (curr: any) => ({ ...createInitialMovementForm(), productId: curr.productId });
+      if (mode === 'opening') setOpeningForm(reset);
+      else if (mode === 'stock-in') setStockInForm(reset);
+      else setAdjustmentForm(reset);
+
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to record movement');
     } finally {
       setIsSubmitting(null);
     }
-  }
+  };
 
-  const selectedActionMeta = activeAction ? movementActionMeta[activeAction] : null;
+  const activeForm = activeAction === 'opening' ? openingForm : activeAction === 'adjustment' ? adjustmentForm : stockInForm;
+  const focusedProduct = useMemo(() => products.find(p => p.id === Number(activeForm.productId)) || products.find(p => p.id === selectedProductId), [products, activeForm.productId, selectedProductId]);
+  const focusedStockItem = useMemo(() => summary.find(i => i.productId === focusedProduct?.id), [summary, focusedProduct]);
 
   return (
-    <div className="space-y-5">
-      {/* ── Dark Hero Banner ── */}
-      <section className="relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#0f172a_0%,#1e293b_55%,#0c1e38_100%)] p-6 shadow-2xl">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_60%,rgba(14,165,233,0.18),transparent_55%)]" />
-        <div className="pointer-events-none absolute right-0 top-0 h-64 w-64 rounded-full bg-cyan-500/5 blur-3xl" />
-        <div className="relative">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <div className="space-y-6">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden rounded-[40px] bg-slate-900 p-8 text-white shadow-2xl">
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 opacity-50" />
+        <div className="relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/15 px-3 py-1.5">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
-                <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-cyan-300">Stock Command Center</p>
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 backdrop-blur-md">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">Inventory Intelligence</span>
               </div>
-              <h1 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">Stock Workspace</h1>
-              <p className="mt-1.5 max-w-lg text-sm leading-6 text-slate-400">Full inventory control — opening stock, stock‑in, adjustments, and live movement history.</p>
+              <h1 className="mt-4 text-4xl font-black tracking-tight">Stock Workspace</h1>
+              <p className="mt-2 text-slate-400 max-w-lg">Monitor, adjust, and optimize your inventory across all companies with real-time data and predictive alerts.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => openSection(setIsCurrentStockOpen, currentStockSectionRef.current)} className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white backdrop-blur transition hover:bg-white/20">Current Stock</button>
-              <button type="button" onClick={() => openSection(setIsMovementHistoryOpen, movementHistorySectionRef.current)} className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white backdrop-blur transition hover:bg-white/20">Movements</button>
-              <button type="button" onClick={() => { setIsLowStockOpen(true); setIsZeroStockOpen(true); globalThis.setTimeout(() => scrollToSection(alertsSectionRef.current), 0); }} className={`rounded-full border px-4 py-2 text-xs font-semibold backdrop-blur transition ${filteredLowStock.length + filteredZeroStock.length > 0 ? 'border-amber-400/40 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25' : 'border-white/20 bg-white/10 text-white hover:bg-white/20'}`}>Alerts{filteredLowStock.length + filteredZeroStock.length > 0 ? ` (${filteredLowStock.length + filteredZeroStock.length})` : ''}</button>
-              {hasAdvancedFilters ? <button type="button" onClick={clearWorkspaceFilters} className="rounded-full border border-rose-400/40 bg-rose-400/15 px-4 py-2 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/25">✕ Clear {activeFilterCount}</button> : null}
+            <div className="flex flex-wrap gap-3">
+              <button onClick={() => currentStockSectionRef.current?.scrollIntoView({ behavior: 'smooth' })} className="rounded-2xl bg-white/10 px-6 py-3 text-sm font-bold backdrop-blur-md hover:bg-white/20 transition-all">Current Stock</button>
+              <button onClick={() => movementHistorySectionRef.current?.scrollIntoView({ behavior: 'smooth' })} className="rounded-2xl bg-white/10 px-6 py-3 text-sm font-bold backdrop-blur-md hover:bg-white/20 transition-all">History</button>
+              <button onClick={() => alertsSectionRef.current?.scrollIntoView({ behavior: 'smooth' })} className="rounded-2xl bg-amber-500/20 border border-amber-500/30 px-6 py-3 text-sm font-bold text-amber-300 backdrop-blur-md hover:bg-amber-500/30 transition-all">
+                Alerts ({lowStock.length + zeroStock.length})
+              </button>
             </div>
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.08] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">Company</p><p className="mt-2 truncate text-lg font-bold text-white">{selectedCompany?.name ?? 'All'}</p><p className="mt-1 text-xs text-slate-500">{products.length} products</p></div>
-            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-400">Total Qty</p><p className="mt-2 text-lg font-bold text-white">{formatNumber(totalVisibleQuantity)}</p><p className="mt-1 text-xs text-slate-500">Units in stock</p></div>
-            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-400">Stock Value</p><p className="mt-2 truncate text-lg font-bold text-white">Tk {formatNumber(totalVisibleInvestment)}</p><p className="mt-1 text-xs text-slate-500">Inventory value</p></div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.08] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">Products</p><p className="mt-2 text-lg font-bold text-white">{filteredSummary.length}</p><p className="mt-1 text-xs text-slate-500">Matching filters</p></div>
-            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/15 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-400">Low Stock</p><p className="mt-2 text-lg font-bold text-amber-100">{filteredLowStock.length}</p><p className="mt-1 text-xs text-slate-500">Need reorder</p></div>
-            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/15 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-400">Zero Stock</p><p className="mt-2 text-lg font-bold text-rose-100">{filteredZeroStock.length}</p><p className="mt-1 text-xs text-slate-500">Out of stock</p></div>
-            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-400">Today</p><p className="mt-2 text-lg font-bold text-white">{todayMovementCount}</p><p className="mt-1 text-xs text-slate-500">+{formatNumber(todayStockInQuantity)} / -{formatNumber(todayStockOutQuantity)}</p></div>
+
+          <div className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7">
+            <StatsBox label="Company" value={selectedCompany?.name || 'All'} subValue={`${products.length} products`} />
+            <StatsBox label="Total Qty" value={formatNumber(stats.totalQty)} subValue="Units in stock" highlight="text-emerald-400" />
+            <StatsBox label="Stock Value" value={`Tk ${formatNumber(stats.totalValue)}`} subValue="Total investment" highlight="text-indigo-400" />
+            <StatsBox label="Matching" value={String(filteredSummary.length)} subValue="Filtered items" />
+            <StatsBox label="Low Stock" value={String(lowStock.length)} subValue="Needs reorder" highlight="text-amber-400" />
+            <StatsBox label="Zero Stock" value={String(zeroStock.length)} subValue="Out of stock" highlight="text-rose-400" />
+            <StatsBox label="Today" value={String(stats.todayCount)} subValue={`+${stats.todayIn} / -${stats.todayOut}`} highlight="text-purple-400" />
           </div>
         </div>
       </section>
 
-      {/* ── Sticky Filter Bar ── */}
-      <div className="sticky top-4 z-10">
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/92 shadow-lg backdrop-blur-xl">
-          <div className="border-b border-slate-100 px-5 py-3.5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold text-slate-900">Workspace Filters</span>
-                {hasAdvancedFilters ? (
-                  <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-bold text-white">{activeFilterCount}</span>
+      {/* Filter Bar */}
+      <div className="sticky top-6 z-30">
+        <div className="rounded-[32px] border border-slate-200 bg-white/80 p-4 shadow-xl backdrop-blur-2xl">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between px-2">
+              <span className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                Workspace Filters
+              </span>
+              <div className="flex gap-2">
+                <QuickRangeChip label="Today" onClick={() => { setFromDate(getDateInputValue(new Date())); setToDate(getDateInputValue(new Date())); }} />
+                <button onClick={clearFilters} className="text-xs font-bold text-rose-500 hover:text-rose-600 px-3 py-2 rounded-xl bg-rose-50 transition-colors">Reset All</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-6">
+              <div className="lg:col-span-2">
+                <input value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} placeholder="Search products, SKU, company..." className="w-full rounded-2xl border-0 bg-slate-100 px-5 py-3 text-sm focus:ring-2 focus:ring-indigo-500 transition-all outline-none" />
+              </div>
+              <select value={selectedCompanyId || ''} onChange={(e) => setSelectedCompanyId(Number(e.target.value) || null)} className="rounded-2xl border-0 bg-slate-100 px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <option value="">All Companies</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select value={selectedProductId || ''} onChange={(e) => setSelectedProductId(Number(e.target.value) || null)} disabled={!selectedCompanyId} className="rounded-2xl border-0 bg-slate-100 px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none disabled:opacity-50">
+                <option value="">All Products</option>
+                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <select value={selectedType} onChange={(e) => setSelectedType(e.target.value as any)} className="rounded-2xl border-0 bg-slate-100 px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <option value="">All Types</option>
+                {movementTypeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <div className="flex gap-2">
+                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-full rounded-2xl border-0 bg-slate-100 px-3 py-3 text-xs outline-none" />
+                <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-full rounded-2xl border-0 bg-slate-100 px-3 py-3 text-xs outline-none" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <section ref={quickActionSectionRef} className="overflow-hidden rounded-[40px] border border-slate-200 bg-white shadow-sm">
+        <div className="bg-slate-50 px-8 py-6 border-b border-slate-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Quick Action Center</h2>
+              <p className="text-sm text-slate-500 mt-1">Select an action and record stock changes instantly.</p>
+            </div>
+            {selectedCompany && (
+              <div className="flex items-center gap-2 rounded-2xl bg-indigo-50 px-4 py-2 text-indigo-700 border border-indigo-100 font-bold text-xs">
+                <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                {selectedCompany.name}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="p-8">
+           <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100 rounded-[24px] mb-8">
+              {(['stock-in', 'adjustment', 'opening'] as const).map(mode => (
+                <button key={mode} onClick={() => setActiveAction(mode)} className={`py-4 rounded-[18px] text-sm font-bold transition-all ${activeAction === mode ? 'bg-white text-slate-900 shadow-xl scale-[1.02]' : 'text-slate-400 hover:text-slate-600'}`}>
+                  {mode === 'stock-in' ? '+ Stock In' : mode === 'adjustment' ? '± Adjust' : '◎ Opening'}
+                </button>
+              ))}
+           </div>
+
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+              <div className="lg:col-span-2">
+                <MovementForm 
+                  products={products} 
+                  form={activeForm} 
+                  setForm={activeAction === 'opening' ? setOpeningForm : activeAction === 'adjustment' ? setAdjustmentForm : setStockInForm} 
+                  quantityHint={movementActionMeta[activeAction].quantityHint}
+                  notePlaceholder={movementActionMeta[activeAction].notePlaceholder}
+                  submitLabel={isSubmitting === activeAction ? 'Saving...' : movementActionMeta[activeAction].submitLabel}
+                  onCancel={() => {}}
+                  onSubmit={(e) => submitMovement(e, activeAction)}
+                />
+              </div>
+              <div className="space-y-6">
+                {focusedProduct ? (
+                  <div className={`p-6 rounded-[32px] border ${focusedStockItem?.isZeroStock ? 'bg-rose-50 border-rose-100' : focusedStockItem?.isLowStock ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-4">Selected Product</p>
+                    <h3 className="text-xl font-black text-slate-900 leading-tight">{focusedProduct.name}</h3>
+                    <p className="text-xs font-mono text-slate-500 mt-1">SKU: {focusedProduct.sku}</p>
+                    
+                    <div className="mt-6 grid grid-cols-2 gap-3">
+                      <div className="bg-white/60 backdrop-blur-md p-4 rounded-2xl border border-white">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Live Stock</p>
+                        <p className="text-2xl font-black text-slate-900 mt-1">{formatNumber(focusedStockItem?.currentStock ?? 0)}</p>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">{focusedProduct.unit}</p>
+                      </div>
+                      <div className="bg-white/60 backdrop-blur-md p-4 rounded-2xl border border-white">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Value</p>
+                        <p className="text-xl font-black text-slate-900 mt-1">Tk {formatNumber(focusedStockItem?.investmentValue ?? 0)}</p>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Total</p>
+                      </div>
+                    </div>
+                  </div>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-slate-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Clean</span>
+                  <div className="p-10 rounded-[32px] border-2 border-dashed border-slate-200 bg-slate-50 text-center">
+                    <p className="text-slate-400 text-sm">Select a product to see live metrics here.</p>
+                  </div>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <QuickRangeChip label="Today" onClick={applyTodayDateFilter} />
-                <QuickRangeChip label="7 Days" onClick={applyLast7DaysFilter} />
-                <QuickRangeChip label="Month" onClick={applyThisMonthFilter} />
-                {hasAdvancedFilters ? (
-                  <button type="button" onClick={clearWorkspaceFilters} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100">Clear all</button>
-                ) : null}
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2.5 p-4 md:grid-cols-3 xl:grid-cols-6">
-            <div className="col-span-2 xl:col-span-2">
-              <input value={searchTerm} onChange={(event) => { resetPagination(); setSearchTerm(event.target.value); }} placeholder="Search products, SKU, company..." className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100" />
-            </div>
-            <div>
-              <select value={selectedCompanyId ?? ''} onChange={(event) => { resetPagination(); setSelectedProductId(null); setSelectedCompanyId(event.target.value ? Number(event.target.value) : null); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100">
-                <option value="">All companies</option>
-                {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <select value={selectedProductId ?? ''} onChange={(event) => { resetPagination(); setSelectedProductId(event.target.value ? Number(event.target.value) : null); }} disabled={!selectedCompanyId} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:opacity-60">
-                <option value="">All products</option>
-                {products.map((product) => <option key={product.id} value={product.id}>{product.name} ({product.unit})</option>)}
-              </select>
-            </div>
-            <div>
-              <select value={selectedType} onChange={(event) => { setMovementPage(1); setSelectedType(event.target.value ? (event.target.value as StockMovementType) : ''); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100">
-                <option value="">All types</option>
-                {movementTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input type="date" value={fromDate} onChange={(event) => { setMovementPage(1); setFromDate(event.target.value); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100" />
-              <input type="date" value={toDate} onChange={(event) => { setMovementPage(1); setToDate(event.target.value); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div ref={quickActionSectionRef}>
-      {/* ── Quick Stock Actions ── */}
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400">Quick Actions</p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-900">Record Stock Movement</h2>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {selectedCompany ? <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-800"><span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />{selectedCompany.name}</span> : <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">Select a company first</span>}
-              {focusedProduct ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600">{focusedProduct.name}</span> : null}
-            </div>
-          </div>
-        </div>
-        <div className="p-6">
-          <div className="mb-5 grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-100/80 p-1.5">
-            {(Object.keys(movementActionMeta) as MovementActionMode[]).map((mode) => {
-              const meta = movementActionMeta[mode];
-              const isActive = activeAction === mode;
-              const accent = mode === 'opening' ? 'text-cyan-600' : mode === 'stock-in' ? 'text-emerald-600' : 'text-amber-600';
-              return (
-                <button key={mode} type="button" onClick={() => activateAction(mode)} disabled={!selectedCompanyId} className={`rounded-[14px] px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${isActive ? 'bg-white text-slate-900 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
-                  <span className={`text-base ${isActive ? accent : ''}`}>{mode === 'opening' ? '◎' : mode === 'stock-in' ? '+' : 'Adj'}</span>
-                  <span className="ml-2">{meta.title}</span>
-                </button>
-              );
-            })}
-          </div>
-          {!selectedCompanyId ? (
-            <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
-              <p className="text-2xl">🏭</p>
-              <p className="mt-3 text-sm font-semibold text-slate-700">Select a company in the filter bar above</p>
-              <p className="mt-1 text-xs text-slate-500">Use the Workspace Filters to pick a company, then return here to record stock movements</p>
-            </div>
-          ) : (
-            <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
-              <div>
-                {activeAction === 'opening' ? <MovementForm products={products} form={openingForm} setForm={setOpeningForm} quantityHint={movementActionMeta.opening.quantityHint} notePlaceholder={movementActionMeta.opening.notePlaceholder} submitLabel={isSubmitting === 'opening' ? 'Saving...' : movementActionMeta.opening.submitLabel} onCancel={() => setActiveAction('stock-in')} onSubmit={(event) => void submitMovement(event, 'opening')} /> : null}
-                {activeAction === 'stock-in' ? <MovementForm products={products} form={stockInForm} setForm={setStockInForm} quantityHint={movementActionMeta['stock-in'].quantityHint} notePlaceholder={movementActionMeta['stock-in'].notePlaceholder} submitLabel={isSubmitting === 'stock-in' ? 'Saving...' : movementActionMeta['stock-in'].submitLabel} onCancel={() => setActiveAction('stock-in')} onSubmit={(event) => void submitMovement(event, 'stock-in')} /> : null}
-                {activeAction === 'adjustment' ? <MovementForm products={products} form={adjustmentForm} setForm={setAdjustmentForm} quantityHint={movementActionMeta.adjustment.quantityHint} notePlaceholder={movementActionMeta.adjustment.notePlaceholder} submitLabel={isSubmitting === 'adjustment' ? 'Saving...' : movementActionMeta.adjustment.submitLabel} onCancel={() => setActiveAction('stock-in')} onSubmit={(event) => void submitMovement(event, 'adjustment')} /> : null}
-              </div>
-              <div className="space-y-3">
-                {/* Product Spotlight */}
-                <div className={`overflow-hidden rounded-2xl border p-4 ${
-                  focusedStockItem?.isZeroStock ? 'border-rose-200 bg-rose-50' :
-                  focusedStockItem?.isLowStock  ? 'border-amber-200 bg-amber-50' :
-                  focusedStockItem ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'
-                }`}>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-slate-400">Product Spotlight</p>
-                  {focusedProduct ? (
-                    <>
-                      <p className="mt-2 text-base font-semibold text-slate-900">{focusedProduct.name}</p>
-                      <p className="mt-0.5 font-mono text-[11px] text-slate-500">SKU: {focusedProduct.sku}</p>
-                      {focusedStockItem ? (
-                        <span className={`mt-2 inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                          focusedStockItem.isZeroStock ? 'bg-rose-100 text-rose-700' :
-                          focusedStockItem.isLowStock  ? 'bg-amber-100 text-amber-700' :
-                          'bg-emerald-100 text-emerald-700'
-                        }`}>
-                          {focusedStockItem.isZeroStock ? 'Out of Stock' : focusedStockItem.isLowStock ? 'Low Stock' : 'Healthy'}
-                        </span>
-                      ) : null}
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <div className="rounded-xl border border-white/80 bg-white/80 p-3 text-center shadow-sm backdrop-blur">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Live Stock</p>
-                          <p className={`mt-1 text-2xl font-bold tabular-nums ${
-                            focusedStockItem?.isZeroStock ? 'text-rose-600' :
-                            focusedStockItem?.isLowStock ? 'text-amber-600' : 'text-emerald-700'
-                          }`}>{formatNumber(focusedStockItem?.currentStock ?? 0)}</p>
-                          <p className="mt-0.5 text-[10px] text-slate-400">{focusedProduct.unit}</p>
-                        </div>
-                        <div className="rounded-xl border border-white/80 bg-white/80 p-3 text-center shadow-sm backdrop-blur">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Value (Tk)</p>
-                          <p className="mt-1 text-lg font-bold text-slate-900">{formatNumber(focusedStockItem?.investmentValue ?? 0)}</p>
-                          <p className="mt-0.5 text-[10px] text-slate-400">@{formatNumber(focusedStockItem?.buyPrice ?? 0)}/unit</p>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="mt-2 text-sm text-slate-500">Select a product below to see live stock, value, and health status before recording a movement.</p>
-                  )}
-                </div>
-
-                {/* Quick product picks */}
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Quick Product</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {quickPickProducts.map((product) => {
-                      const stockItem = focusedStockItem?.productId === product.id ? focusedStockItem : null;
-                      return (
-                        <button key={product.id} type="button" onClick={() => chooseQuickProduct(product.id)}
-                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${activeForm.productId === String(product.id) ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>
-                          {product.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Quick quantity */}
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Quick Qty</p>
-                  <div className="mt-2 grid grid-cols-4 gap-1.5">
-                    {['1','5','10','20','50','100','250','500'].map((v) => (
-                      <button key={v} type="button" onClick={() => applyQuantityPreset(v)}
-                        className={`rounded-xl py-2 text-sm font-semibold transition ${activeForm.quantity === v ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'}`}>
-                        {v}
-                      </button>
-                    ))}
-                  </div>
-                  {activeAction === 'adjustment' ? (
-                    <div className="mt-2 grid grid-cols-4 gap-1.5">
-                      {['-1','-5','-10','-20'].map((v) => (
-                        <button key={v} type="button" onClick={() => applyQuantityPreset(v)}
-                          className={`rounded-xl py-2 text-xs font-semibold transition ${activeForm.quantity === v ? 'bg-amber-600 text-white' : 'border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'}`}>
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          )}
+           </div>
         </div>
       </section>
-      </div>
-      {error ? (
-        <StateMessage
-          title="Stock workspace needs attention"
-          description={error}
-          tone="error"
-        />
-      ) : null}
 
-      {isLoading ? <LoadingBlock label="Refreshing stock workspace..." /> : null}
-
+      {/* Main Content Sections */}
       <div ref={currentStockSectionRef}>
-        <PageCard
-          title="Current Stock Summary"
-          description="This summary is calculated from stock movements, so it is the best place to verify live balances before you add more stock or make corrections."
+        <PageCard 
+          title="Current Stock Snapshot" 
+          description="Live inventory balances calculated from all stock movements."
           action={
-            <div className="flex flex-wrap items-center gap-3">
-              <SectionStatusBadge
-                label={`${filteredSummary.length} matching products`}
-                toneClassName="border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#eef2ff_100%)] text-slate-700"
-                dotClassName="bg-cyan-500"
-              />
-              <SectionToggleButton
-                isOpen={isCurrentStockOpen}
-                onClick={() => setIsCurrentStockOpen((current) => !current)}
-                openLabel="Open live stock snapshot"
-                closeLabel="Hide live stock snapshot"
-              />
+            <div className="flex items-center gap-3">
+              <SectionStatusBadge label={`${summary.length} items`} toneClassName="bg-slate-100 border-slate-200 text-slate-600" dotClassName="bg-indigo-500" />
+              <SectionToggleButton isOpen={isCurrentStockOpen} onClick={() => setIsCurrentStockOpen(!isCurrentStockOpen)} openLabel="View" closeLabel="Hide" />
             </div>
           }
         >
           {isCurrentStockOpen ? (
-            <>
-              <StockSummaryTable items={paginatedSummary} onQuickAction={handleQuickAction} />
-              <Pagination
-                currentPage={summaryPage}
-                totalItems={filteredSummary.length}
-                pageSize={stockTablePageSize}
-                onPageChange={setSummaryPage}
-              />
-            </>
-          ) : (
-            <SectionCollapsedNotice
-              title="Live stock snapshot is closed"
-              description="Click the open button to review current balances, health badges, and product-by-product stock details."
-            />
-          )}
+            isFetchingSummary && summary.length === 0 ? <SkeletonLoader /> : (
+              <div className={isFetchingSummary ? 'opacity-50' : ''}>
+                <StockSummaryTable items={paginatedSummary} onQuickAction={handleQuickAction} />
+                <Pagination currentPage={summaryPage} totalItems={filteredSummary.length} pageSize={stockTablePageSize} onPageChange={setSummaryPage} />
+              </div>
+            )
+          ) : <SectionCollapsedNotice title="Stock snapshot is hidden" description="Expand to view live balances and health status." />}
+        </PageCard>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6" ref={alertsSectionRef}>
+        <PageCard title="Low Stock Alerts" description="Products nearing their reorder threshold.">
+          {isLowStockOpen ? (
+            isFetchingLowStock && lowStock.length === 0 ? <SkeletonLoader /> : (
+              <StockSummaryTable items={lowStock.slice((lowStockPage-1)*stockTablePageSize, lowStockPage*stockTablePageSize)} onQuickAction={handleQuickAction} />
+            )
+          ) : <SectionCollapsedNotice title="Low stock hidden" description="Review items that need reordering." />}
+        </PageCard>
+        <PageCard title="Zero Stock Alerts" description="Items currently fully out of stock.">
+           {isZeroStockOpen ? (
+            isFetchingZeroStock && zeroStock.length === 0 ? <SkeletonLoader /> : (
+              <StockSummaryTable items={zeroStock.slice((zeroStockPage-1)*stockTablePageSize, zeroStockPage*stockTablePageSize)} onQuickAction={handleQuickAction} />
+            )
+          ) : <SectionCollapsedNotice title="Zero stock hidden" description="Review items with no current balance." />}
         </PageCard>
       </div>
 
       <div ref={movementHistorySectionRef}>
-        <PageCard
-          title="Movement History"
-          description="Full movement history now lives here on the stock page. Use the filters above to narrow by keyword, type, product, or date range."
-          action={
-            <div className="flex flex-wrap items-center gap-3">
-              {selectedCompanyId ? (
-                <SectionStatusBadge
-                  label={`${movements.length} matching movements`}
-                  toneClassName="border-cyan-200 bg-[linear-gradient(135deg,#ecfeff_0%,#f0f9ff_100%)] text-cyan-900"
-                  dotClassName="bg-cyan-500"
-                />
-              ) : null}
-              <SectionToggleButton
-                isOpen={isMovementHistoryOpen}
-                onClick={() => setIsMovementHistoryOpen((current) => !current)}
-                openLabel="Open movement history"
-                closeLabel="Hide movement history"
-              />
-            </div>
-          }
-        >
-          {isMovementHistoryOpen ? selectedCompanyId ? (
-            <>
-              <div className="mb-5 grid gap-3 sm:grid-cols-3">
-                <MiniMetric label="Selected company" value={selectedCompany?.name ?? 'None'} />
-                <MiniMetric label="Matching records" value={String(movements.length)} />
-                <MiniMetric label="Today in results" value={String(todayMovementCount)} />
-              </div>
-              <StockMovementList
-                movements={paginatedMovements}
-                totalItems={movements.length}
-                currentPage={movementPage}
-                pageSize={movementPageSize}
-                onPageChange={setMovementPage}
-                emptyTitle="No stock movements found"
-                  emptyDescription="Try widening the filters above or use a quick action popup to add opening stock, stock in, or an adjustment."
-                />
-              </>
-            ) : (
-              <MovementHistoryPlaceholder />
-            ) : (
-              <SectionCollapsedNotice
-                title="Movement history is closed"
-                description="Click the open button to review stock entries, filters, and today’s movement activity."
-              />
-            )}
+        <PageCard title="Movement History" description="Comprehensive log of all stock changes.">
+           {isMovementHistoryOpen ? (
+             !selectedCompanyId ? <SectionCollapsedNotice title="Select Company" description="Pick a company to view its movement history." /> :
+             isFetchingMovements && movements.length === 0 ? <SkeletonLoader height="h-64" /> : (
+               <div className={isFetchingMovements ? 'opacity-50' : ''}>
+                 <div className="mb-6 grid grid-cols-3 gap-4">
+                   <MiniMetric label="Filter Match" value={String(movements.length)} />
+                   <MiniMetric label="Today's Moves" value={String(stats.todayCount)} />
+                   <MiniMetric label="Selected Type" value={selectedType || 'All'} />
+                 </div>
+                 <StockMovementList 
+                   movements={paginatedMovements} 
+                   totalItems={movements.length} 
+                   currentPage={movementPage} 
+                   pageSize={movementPageSize} 
+                   onPageChange={setMovementPage} 
+                   emptyTitle="No movements found"
+                   emptyDescription="Try widening your filters or recording a new movement."
+                 />
+               </div>
+             )
+           ) : <SectionCollapsedNotice title="History hidden" description="Expand to view detailed logs." />}
         </PageCard>
       </div>
-
-      <div ref={alertsSectionRef} className="grid gap-6 xl:grid-cols-2">
-        <div ref={lowStockSectionRef}>
-          <PageCard
-            title="Low Stock Products"
-            description="Products with current stock above zero and at or below the backend threshold."
-            action={
-              <div className="flex flex-wrap items-center gap-3">
-                <SectionStatusBadge
-                  label={`${filteredLowStock.length} products need attention`}
-                  toneClassName="border-amber-200 bg-[linear-gradient(135deg,#fff8eb_0%,#fffbeb_100%)] text-amber-900"
-                  dotClassName="bg-amber-500"
-                />
-                <SectionToggleButton
-                  isOpen={isLowStockOpen}
-                  onClick={() => setIsLowStockOpen((current) => !current)}
-                  openLabel="Open low stock products"
-                  closeLabel="Hide low stock products"
-                />
-              </div>
-            }
-          >
-            {isLowStockOpen ? (
-              <>
-                <StockSummaryTable items={paginatedLowStock} onQuickAction={handleQuickAction} />
-                <Pagination
-                  currentPage={lowStockPage}
-                  totalItems={filteredLowStock.length}
-                  pageSize={stockTablePageSize}
-                  onPageChange={setLowStockPage}
-                />
-              </>
-            ) : (
-              <SectionCollapsedNotice
-                title="Low stock products are closed"
-                description="Click the open button to review which products are near the reorder line."
-              />
-            )}
-          </PageCard>
-        </div>
-
-        <div ref={zeroStockSectionRef}>
-          <PageCard
-            title="Zero Stock Products"
-            description="Products currently calculated as zero stock from stock movements."
-            action={
-              <div className="flex flex-wrap items-center gap-3">
-                <SectionStatusBadge
-                  label={`${filteredZeroStock.length} products are fully out`}
-                  toneClassName="border-rose-200 bg-[linear-gradient(135deg,#fff1f2_0%,#fff5f7_100%)] text-rose-900"
-                  dotClassName="bg-rose-500"
-                />
-                <SectionToggleButton
-                  isOpen={isZeroStockOpen}
-                  onClick={() => setIsZeroStockOpen((current) => !current)}
-                  openLabel="Open zero stock products"
-                  closeLabel="Hide zero stock products"
-                />
-              </div>
-            }
-          >
-            {isZeroStockOpen ? (
-              <>
-                <StockSummaryTable items={paginatedZeroStock} onQuickAction={handleQuickAction} />
-                <Pagination
-                  currentPage={zeroStockPage}
-                  totalItems={filteredZeroStock.length}
-                  pageSize={stockTablePageSize}
-                  onPageChange={setZeroStockPage}
-                />
-              </>
-            ) : (
-              <SectionCollapsedNotice
-                title="Zero stock products are closed"
-                description="Click the open button to review the products that are fully out of stock."
-              />
-            )}
-          </PageCard>
-        </div>
-      </div>
-
     </div>
   );
 }
 
-function HeroStatCard({
-  label,
-  value,
-  detail,
-  toneClassName,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  toneClassName: string;
-}) {
+function StatsBox({ label, value, subValue, highlight = 'text-white' }: { label: string, value: string, subValue: string, highlight?: string }) {
   return (
-    <div
-      className={`relative overflow-hidden rounded-[28px] border border-white/70 p-5 shadow-[0_26px_60px_-42px_rgba(15,23,42,0.45)] ${toneClassName}`}
-    >
-      <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-white/20 blur-2xl" />
-      <div className="relative">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] opacity-70">
-          {label}
-        </p>
-        <p className="mt-4 text-3xl font-semibold tracking-tight">{value}</p>
-        <p className="mt-3 text-sm leading-6 opacity-80">{detail}</p>
-      </div>
+    <div className="rounded-2xl bg-white/5 border border-white/10 p-5 backdrop-blur-sm">
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</p>
+      <p className={`text-xl font-black mt-2 truncate ${highlight}`}>{value}</p>
+      <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold">{subValue}</p>
     </div>
   );
-}
-
-function FilterControlShell({
-  label,
-  hint,
-  className = '',
-  children,
-}: {
-  label: string;
-  hint: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <label
-      className={`rounded-[26px] border border-white/80 bg-white/78 p-4 shadow-sm backdrop-blur ${className}`}
-    >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-            {label}
-          </p>
-          <p className="mt-2 text-sm leading-6 text-slate-500">{hint}</p>
-        </div>
-      </div>
-      {children}
-    </label>
-  );
-}
-
-function QuickRangeChip({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-full border border-white/80 bg-white/80 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-white"
-    >
-      {label}
-    </button>
-  );
-}
-
-function FilterNote({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-[26px] border border-slate-200/80 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-        Workspace note
-      </p>
-      <p className="mt-3 text-sm font-semibold text-slate-950">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
-    </div>
-  );
-}
-
-function MiniMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-[24px] border border-slate-200/80 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] px-4 py-4 shadow-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-        {label}
-      </p>
-      <p className="mt-3 text-lg font-semibold tracking-tight text-slate-950">{value}</p>
-    </div>
-  );
-}
-
-function SectionStatusBadge({
-  label,
-  toneClassName,
-  dotClassName,
-}: {
-  label: string;
-  toneClassName: string;
-  dotClassName: string;
-}) {
-  return (
-    <div
-      className={`inline-flex items-center gap-3 rounded-[22px] border px-4 py-3 text-sm font-medium shadow-sm ${toneClassName}`}
-    >
-      <span className={`h-2.5 w-2.5 rounded-full ${dotClassName}`} />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function SectionToggleButton({
-  isOpen,
-  onClick,
-  openLabel,
-  closeLabel,
-}: {
-  isOpen: boolean;
-  onClick: () => void;
-  openLabel: string;
-  closeLabel: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
-    >
-      {isOpen ? closeLabel : openLabel}
-    </button>
-  );
-}
-
-function SectionCollapsedNotice({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-[28px] border border-dashed border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] px-5 py-6 shadow-sm">
-      <p className="text-sm font-semibold text-slate-950">{title}</p>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-        {description}
-      </p>
-    </div>
-  );
-}
-
-function MovementHistoryPlaceholder() {
-  return (
-    <div className="overflow-hidden rounded-[30px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_34%),linear-gradient(135deg,#ffffff_0%,#f8fafc_55%,#eef6ff_100%)] p-5 shadow-[0_26px_70px_-44px_rgba(15,23,42,0.5)]">
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
-            Movement readiness
-          </p>
-          <h4 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
-            Pick a company to unlock live movement history
-          </h4>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            All-company mode helps you scan alert counts, but movement history and stock updates become much easier once one company is in focus.
-          </p>
-        </div>
-
-        <div className="rounded-[24px] border border-white/80 bg-white/80 px-5 py-4 shadow-sm backdrop-blur">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-            Status
-          </p>
-          <p className="mt-2 text-lg font-semibold text-slate-950">
-            Awaiting company focus
-          </p>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            Select a company above and this panel will switch into movement analytics.
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-3 md:grid-cols-2">
-        <div className="rounded-[24px] border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
-          <p className="text-sm font-semibold text-slate-950">Review alerts first</p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Use the summary, low-stock, and zero-stock panels to spot which company needs attention before opening movement history.
-          </p>
-        </div>
-        <div className="rounded-[24px] border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
-          <p className="text-sm font-semibold text-slate-950">Update stock faster</p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Once a company is selected, the quick action popups stay aligned with that company for opening stock, stock-in, and adjustment work.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type ModalShellProps = {
-  isOpen: boolean;
-  title: string;
-  description: string;
-  onClose: () => void;
-  children: ReactNode;
-};
-
-function ModalShell({
-  isOpen,
-  title,
-  description,
-  onClose,
-  children,
-}: ModalShellProps) {
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
-
-  if (!isOpen) {
-    return null;
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label="Close modal"
-        onClick={onClose}
-        className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[32px] border border-slate-200 bg-white p-6 shadow-2xl"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-700">
-              Stock action popup
-            </p>
-            <h3 className="mt-3 text-2xl font-semibold text-slate-950">{title}</h3>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{description}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mt-6">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-type MovementFormProps = {
-  products: Product[];
-  form: MovementFormState;
-  setForm: React.Dispatch<React.SetStateAction<MovementFormState>>;
-  quantityHint: string;
-  notePlaceholder: string;
-  submitLabel: string;
-  onCancel: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-};
-
-function MovementForm({
-  products,
-  form,
-  setForm,
-  quantityHint,
-  notePlaceholder,
-  submitLabel,
-  onCancel,
-  onSubmit,
-}: MovementFormProps) {
-  return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="block space-y-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Product</span>
-          <select
-            value={form.productId}
-            onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100"
-          >
-            <option value="">Select product</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>{product.name} ({product.unit})</option>
-            ))}
-          </select>
-        </label>
-        <label className="block space-y-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Movement Date</span>
-          <input
-            type="datetime-local"
-            value={form.movementDate}
-            onChange={(event) => setForm((current) => ({ ...current, movementDate: event.target.value }))}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100"
-          />
-        </label>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="block space-y-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Quantity</span>
-          <input
-            type="number"
-            step="0.001"
-            value={form.quantity}
-            onChange={(event) => setForm((current) => ({ ...current, quantity: event.target.value }))}
-            placeholder="Enter quantity"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100"
-          />
-          <p className="text-xs text-slate-400">{quantityHint}</p>
-        </label>
-        <label className="block space-y-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Note</span>
-          <textarea
-            value={form.note}
-            onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
-            rows={3}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-300 focus:bg-white focus:ring-2 focus:ring-cyan-100"
-            placeholder={notePlaceholder}
-          />
-        </label>
-      </div>
-      <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
-        <p className="text-xs text-slate-400">Review all fields before saving.</p>
-        <div className="flex gap-2">
-          <button type="button" onClick={onCancel} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50">Cancel</button>
-          <button type="submit" className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700">{submitLabel}</button>
-        </div>
-      </div>
-    </form>
-  );
-}
-
-function StockSummaryTable({
-  items,
-  onQuickAction,
-}: {
-  items: StockSummaryItem[];
-  onQuickAction?: (productId: number, mode: MovementActionMode) => void;
-}) {
-  if (items.length === 0) {
-    return (
-      <StateMessage
-        title="No products to show"
-        description="Try another company or widen the filters."
-      />
-    );
-  }
-
-  const lowStockItems = items.filter((item) => item.isLowStock).length;
-  const zeroStockItems = items.filter((item) => item.isZeroStock).length;
-  const totalQty = items.reduce((s, i) => s + Math.max(Number(i.currentStock) || 0, 0), 0);
-  const totalValue = items.reduce((s, i) => s + Math.max(Number(i.investmentValue) || 0, 0), 0);
-
-  return (
-    <div className="space-y-3">
-      {/* Mini summary bar */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <div className="rounded-xl bg-slate-50 p-3 text-center">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Products</p>
-          <p className="mt-1 text-xl font-bold text-slate-900">{items.length}</p>
-        </div>
-        <div className="rounded-xl bg-cyan-50 p-3 text-center">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-500">Total Qty</p>
-          <p className="mt-1 text-xl font-bold text-cyan-900">{formatNumber(totalQty)}</p>
-        </div>
-        <div className={`rounded-xl p-3 text-center ${lowStockItems > 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
-          <p className={`text-[10px] font-bold uppercase tracking-wider ${lowStockItems > 0 ? 'text-amber-500' : 'text-slate-400'}`}>Low Stock</p>
-          <p className={`mt-1 text-xl font-bold ${lowStockItems > 0 ? 'text-amber-900' : 'text-slate-400'}`}>{lowStockItems}</p>
-        </div>
-        <div className={`rounded-xl p-3 text-center ${zeroStockItems > 0 ? 'bg-rose-50' : 'bg-slate-50'}`}>
-          <p className={`text-[10px] font-bold uppercase tracking-wider ${zeroStockItems > 0 ? 'text-rose-500' : 'text-slate-400'}`}>Zero Stock</p>
-          <p className={`mt-1 text-xl font-bold ${zeroStockItems > 0 ? 'text-rose-900' : 'text-slate-400'}`}>{zeroStockItems}</p>
-        </div>
-      </div>
-
-      {/* Compact table */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {/* Header */}
-        <div className="grid grid-cols-[2fr_1fr_0.6fr_1.1fr_1fr_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-          <div>Product / SKU</div>
-          <div>Company</div>
-          <div>Unit</div>
-          <div>Live Stock</div>
-          <div>Value</div>
-          <div className="w-24 text-right">Actions</div>
-        </div>
-
-        {/* Rows */}
-        <div className="divide-y divide-slate-100">
-          {items.map((item) => (
-            <div
-              key={item.productId}
-              className={`grid grid-cols-[2fr_1fr_0.6fr_1.1fr_1fr_auto] items-center gap-3 px-4 py-3 transition hover:bg-slate-50/60 ${
-                item.isZeroStock
-                  ? 'border-l-[3px] border-rose-400'
-                  : item.isLowStock
-                    ? 'border-l-[3px] border-amber-400'
-                    : 'border-l-[3px] border-transparent'
-              }`}
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">{item.productName}</p>
-                <p className="mt-0.5 font-mono text-[11px] text-slate-400">{item.sku}</p>
-              </div>
-              <div>
-                <p className="truncate text-xs font-semibold text-slate-700">{item.company?.name ?? '--'}</p>
-                <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">{item.company?.code ?? '--'}</span>
-              </div>
-              <div>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{item.unit}</span>
-              </div>
-              <div>
-                <p className={`text-lg font-bold tabular-nums ${item.isZeroStock ? 'text-rose-600' : item.isLowStock ? 'text-amber-600' : 'text-emerald-700'}`}>
-                  {formatNumber(item.currentStock)}
-                </p>
-                <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100">
-                  <div className={`h-1.5 rounded-full ${getStockMeterClassName(item)}`} style={{ width: getStockMeterWidth(item) }} />
-                </div>
-                <span className={`mt-0.5 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${getStockStateBadgeClassName(item)}`}>
-                  {getStockStateLabel(item)}
-                </span>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-700">BDT {formatNumber(item.investmentValue)}</p>
-                <p className="text-[10px] text-slate-400">@{formatNumber(item.buyPrice)}/unit</p>
-              </div>
-              <div className="flex w-24 flex-shrink-0 flex-col items-end gap-1">
-                {onQuickAction ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onQuickAction(item.productId, 'stock-in')}
-                      className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
-                    >
-                      Stock In
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onQuickAction(item.productId, 'adjustment')}
-                      className="w-full rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-700 transition hover:bg-amber-100"
-                    >
-                      Adjust
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Footer totals */}
-        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-400">{items.length} product{items.length === 1 ? '' : 's'} shown</p>
-          <div className="flex gap-6 text-xs">
-            <div><span className="text-slate-400">Total Qty: </span><span className="font-bold text-slate-900">{formatNumber(totalQty)}</span></div>
-            <div><span className="text-slate-400">Value: </span><span className="font-bold text-slate-900">Tk {formatNumber(totalValue)}</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StockSummaryMetric({
-  label,
-  value,
-  detail,
-  surfaceClassName,
-  valueClassName,
-  dotClassName,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  surfaceClassName: string;
-  valueClassName: string;
-  dotClassName: string;
-}) {
-  return (
-    <div
-      className={`rounded-[26px] border border-white/80 px-4 py-4 shadow-sm backdrop-blur ${surfaceClassName}`}
-    >
-      <div className="flex items-center gap-2">
-        <span className={`h-2.5 w-2.5 rounded-full ${dotClassName}`} />
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-          {label}
-        </p>
-      </div>
-      <p className={`mt-4 text-3xl font-semibold tracking-tight ${valueClassName}`}>
-        {value}
-      </p>
-      <p className="mt-2 text-sm leading-6 text-slate-500">{detail}</p>
-    </div>
-  );
-}
-
-function StockFlagBadge({
-  label,
-  toneClassName,
-}: {
-  label: string;
-  toneClassName: string;
-}) {
-  return (
-    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${toneClassName}`}>
-      {label}
-    </span>
-  );
-}
-
-function getStockStateLabel(item: StockSummaryItem) {
-  if (item.isZeroStock) {
-    return 'Out of stock';
-  }
-
-  if (item.isLowStock) {
-    return 'Low stock';
-  }
-
-  return 'Healthy stock';
-}
-
-function getStockStateBadgeClassName(item: StockSummaryItem) {
-  if (item.isZeroStock) {
-    return 'bg-rose-100 text-rose-700';
-  }
-
-  if (item.isLowStock) {
-    return 'bg-amber-100 text-amber-700';
-  }
-
-  return 'bg-cyan-100 text-cyan-700';
-}
-
-function getStockToneClassName(item: StockSummaryItem) {
-  if (item.isZeroStock) {
-    return 'bg-rose-50 text-rose-900';
-  }
-
-  if (item.isLowStock) {
-    return 'bg-amber-50 text-amber-900';
-  }
-
-  return 'bg-cyan-50 text-cyan-900';
-}
-
-function getStockAccentBarClassName(item: StockSummaryItem) {
-  if (item.isZeroStock) {
-    return 'bg-[linear-gradient(180deg,#fb7185_0%,#e11d48_100%)]';
-  }
-
-  if (item.isLowStock) {
-    return 'bg-[linear-gradient(180deg,#fbbf24_0%,#f59e0b_100%)]';
-  }
-
-  return 'bg-[linear-gradient(180deg,#67e8f9_0%,#0891b2_100%)]';
-}
-
-function getStockAuraClassName(item: StockSummaryItem) {
-  if (item.isZeroStock) {
-    return 'bg-[radial-gradient(circle_at_top_left,rgba(251,113,133,0.22),transparent_68%)]';
-  }
-
-  if (item.isLowStock) {
-    return 'bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.24),transparent_68%)]';
-  }
-
-  return 'bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_68%)]';
-}
-
-function getStockMeterClassName(item: StockSummaryItem) {
-  if (item.isZeroStock) {
-    return 'bg-rose-500';
-  }
-
-  if (item.isLowStock) {
-    return 'bg-amber-400';
-  }
-
-  return 'bg-cyan-500';
-}
-
-function getStockMeterWidth(item: StockSummaryItem) {
-  if (item.isZeroStock) {
-    return '10%';
-  }
-
-  if (item.isLowStock) {
-    return '42%';
-  }
-
-  return '84%';
-}
-
-function getStockStateSupportCopy(item: StockSummaryItem) {
-  if (item.isZeroStock) {
-    return 'Immediate refill recommended before the next sales round.';
-  }
-
-  if (item.isLowStock) {
-    return 'Reorder soon to keep this product away from a stockout.';
-  }
-
-  return 'Comfortable balance for current daily movement activity.';
 }

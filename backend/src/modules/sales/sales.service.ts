@@ -952,6 +952,87 @@ export class SalesService {
     }
   }
 
+  async getDailySummaryReport(query: SalesSummaryQueryDto & { scope?: 'all' | 'company' }) {
+    const { start, end } = this.getDayRange(query.date);
+    
+    const queryBuilder = this.salesRepository
+      .createQueryBuilder('sale')
+      .innerJoin('sale.items', 'item')
+      .innerJoin('item.product', 'product')
+      .innerJoin('sale.company', 'company')
+      .select('company.id', 'companyId')
+      .addSelect('company.name', 'companyName')
+      .addSelect('product.id', 'productId')
+      .addSelect('product.name', 'productName')
+      .addSelect('SUM(item.quantity + COALESCE(item.freeQuantity, 0))', 'quantitySold')
+      .addSelect('SUM(item.lineTotal)', 'totalAmount')
+      .where('sale.saleDate >= :start', { start })
+      .andWhere('sale.saleDate <= :end', { end });
+
+    if (query.companyId && query.scope === 'company') {
+      queryBuilder.andWhere('sale.companyId = :companyId', { companyId: query.companyId });
+    }
+
+    const rows = await queryBuilder
+      .groupBy('company.id')
+      .addGroupBy('company.name')
+      .addGroupBy('product.id')
+      .addGroupBy('product.name')
+      .orderBy('company.name', 'ASC')
+      .addOrderBy('product.name', 'ASC')
+      .getRawMany();
+
+    const groupsMap = new Map<number, any>();
+    let grandTotalQuantity = 0;
+    let grandTotalAmount = 0;
+
+    for (const row of rows) {
+      const companyId = Number(row.companyId);
+      const quantitySold = Number(row.quantitySold);
+      const totalAmount = Number(row.totalAmount);
+      const unitPrice = quantitySold > 0 ? this.roundToTwo(totalAmount / quantitySold) : 0;
+
+      if (!groupsMap.has(companyId)) {
+        groupsMap.set(companyId, {
+          companyId,
+          companyName: row.companyName,
+          items: [],
+          subtotalQuantity: 0,
+          subtotalAmount: 0,
+        });
+      }
+
+      const group = groupsMap.get(companyId);
+      group.items.push({
+        productId: Number(row.productId),
+        productName: row.productName,
+        quantitySold,
+        unitPrice,
+        totalAmount,
+      });
+
+      group.subtotalQuantity += quantitySold;
+      group.subtotalAmount += totalAmount;
+
+      grandTotalQuantity += quantitySold;
+      grandTotalAmount += totalAmount;
+    }
+
+    for (const group of groupsMap.values()) {
+      group.subtotalQuantity = this.roundToThree(group.subtotalQuantity);
+      group.subtotalAmount = this.roundToTwo(group.subtotalAmount);
+    }
+
+    return {
+      date: start.toISOString(),
+      scope: query.scope || 'all',
+      companyId: query.companyId || null,
+      groups: Array.from(groupsMap.values()),
+      grandTotalQuantity: this.roundToThree(grandTotalQuantity),
+      grandTotalAmount: this.roundToTwo(grandTotalAmount),
+    };
+  }
+
   private async ensureInvoiceNoAvailable(
     saleRepository: Repository<Sale>,
     invoiceNo: string,

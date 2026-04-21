@@ -104,3 +104,34 @@ export function getDueOverview(query: SalesQuery = {}) {
 export function getShopDueDetails(shopId: number) {
   return apiRequest<ShopDueDetails>(`sales/shops/${shopId}/due-details`);
 }
+
+export type DailySummaryReportGroupItem = {
+  productId: number;
+  productName: string;
+  quantitySold: number;
+  unitPrice: number;
+  totalAmount: number;
+};
+
+export type DailySummaryReportGroup = {
+  companyId: number;
+  companyName: string;
+  items: DailySummaryReportGroupItem[];
+  subtotalQuantity: number;
+  subtotalAmount: number;
+};
+
+export type DailySummaryReport = {
+  date: string;
+  scope: 'all' | 'company';
+  companyId: number | null;
+  groups: DailySummaryReportGroup[];
+  grandTotalQuantity: number;
+  grandTotalAmount: number;
+};
+
+export function getDailySummaryReport(query: { date?: string; companyId?: number; scope?: 'all' | 'company' }) {
+  return apiRequest<DailySummaryReport>('sales/reports/daily-summary', {
+    query,
+  });
+}

@@ -256,12 +256,12 @@ export function CreateSalePage() {
           getProducts(Number(companyId)),
           getStockSummary(Number(companyId))
         ]);
-        
+
         const stockMap: Record<number, number> = {};
-        for(const item of stockData) {
-            stockMap[item.productId] = item.currentStock;
+        for (const item of stockData) {
+          stockMap[item.productId] = item.currentStock;
         }
-        
+
         setStockSummary(stockMap);
         setProducts(productData);
         setItems((current) =>
@@ -367,19 +367,19 @@ export function CreateSalePage() {
         const freeQty = Number(item.freeQuantity || 0);
         const unitPrice = Number(item.unitPrice || 0);
         const buyPrice = product?.buyPrice ?? 0;
-        
+
         const subTotal = quantity * unitPrice;
         let discountAmount = 0;
         const distValue = Number(item.discountValue || 0);
-        
+
         if (distValue > 0) {
-            if (item.discountType === 'percentage') {
-                discountAmount = (subTotal * distValue) / 100;
-            } else {
-                discountAmount = distValue;
-            }
+          if (item.discountType === 'percentage') {
+            discountAmount = (subTotal * distValue) / 100;
+          } else {
+            discountAmount = distValue;
+          }
         }
-        
+
         const lineTotal = subTotal - discountAmount;
         const totalCost = buyPrice * (quantity + freeQty);
         const lineProfit = Math.max(0, lineTotal - totalCost);
@@ -399,12 +399,12 @@ export function CreateSalePage() {
   );
 
   const invoiceDiscountAmount = useMemo(() => {
-     const value = Number(invoiceDiscountValue || 0);
-     if (value <= 0) return 0;
-     if (invoiceDiscountType === 'percentage') {
-         return (subTotalAmount * value) / 100;
-     }
-     return value;
+    const value = Number(invoiceDiscountValue || 0);
+    if (value <= 0) return 0;
+    if (invoiceDiscountType === 'percentage') {
+      return (subTotalAmount * value) / 100;
+    }
+    return value;
   }, [invoiceDiscountValue, invoiceDiscountType, subTotalAmount]);
 
   const totalAmount = useMemo(
@@ -560,10 +560,10 @@ export function CreateSalePage() {
       }
 
       if (mode === 'details') {
-          router.push(`/sales/${sale.id}`);
+        router.push(`/sales/${sale.id}`);
       } else if (mode === 'print') {
-          window.open(`/sales/${sale.id}/invoice`, '_blank');
-          prepareNextOrder(sale);
+        window.open(`/sales/${sale.id}/invoice`, '_blank');
+        prepareNextOrder(sale);
       }
     } catch (saveError) {
       setFormError(
@@ -659,10 +659,10 @@ export function CreateSalePage() {
 
         {!isLoading && !error ? (
           <form onSubmit={(event) => void handleSubmit(event)} className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="rounded-3xl border border-slate-100 bg-gradient-to-r from-slate-50 to-white p-6 shadow-sm">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">Payment mode</p>
+                  <p className="text-base font-bold text-slate-900">Payment Mode</p>
                   <p className="mt-1 text-sm text-slate-500">
                     Use full paid for quick daily sales. Switch to due only when payment is not complete.
                   </p>
@@ -671,22 +671,20 @@ export function CreateSalePage() {
                   <button
                     type="button"
                     onClick={activateFullPaidMode}
-                    className={`rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                      paymentMode === 'full'
-                        ? 'bg-emerald-600 text-white'
-                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                    }`}
+                    className={`rounded-2xl px-5 py-3 text-sm font-bold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${paymentMode === 'full'
+                      ? 'bg-emerald-500 text-white shadow-emerald-500/20'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-emerald-600'
+                      }`}
                   >
                     Full paid sale
                   </button>
                   <button
                     type="button"
                     onClick={activateDueMode}
-                    className={`rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                      paymentMode === 'due'
-                        ? 'bg-amber-500 text-white'
-                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                    }`}
+                    className={`rounded-2xl px-5 py-3 text-sm font-bold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${paymentMode === 'due'
+                      ? 'bg-amber-500 text-white shadow-amber-500/20'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-amber-600'
+                      }`}
                   >
                     Due sale
                   </button>
@@ -696,10 +694,10 @@ export function CreateSalePage() {
 
             <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] xl:items-start">
               <div className="space-y-6">
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="mb-6">
-                    <h3 className="text-xl font-semibold text-slate-900">Create Sale</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                <div className="rounded-3xl border border-slate-100 bg-white p-6 md:p-8 shadow-sm transition-all hover:shadow-md">
+                  <div className="mb-8">
+                    <h3 className="text-2xl font-bold tracking-tight text-slate-900">Sale Details</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-500">
                       Choose company, route, shop, payment, and invoice settings before adding items.
                     </p>
                   </div>
@@ -711,7 +709,7 @@ export function CreateSalePage() {
                         <select
                           value={companyId}
                           onChange={(event) => setCompanyId(event.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 shadow-inner px-4 py-3 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all hover:border-slate-300"
                         >
                           <option value="">Select company</option>
                           {companies.map((company) => (
@@ -727,7 +725,7 @@ export function CreateSalePage() {
                         <select
                           value={routeId}
                           onChange={(event) => setRouteId(event.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 shadow-inner px-4 py-3 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all hover:border-slate-300"
                         >
                           <option value="">Select route</option>
                           {routes.map((route) => (
@@ -745,11 +743,10 @@ export function CreateSalePage() {
                         <select
                           value={shopId}
                           onChange={(event) => setShopId(event.target.value)}
-                          className={`w-full rounded-2xl border bg-slate-50 px-4 py-3 text-sm ${
-                            dueAmount > 0 && !shopId
-                              ? 'border-amber-300'
-                              : 'border-slate-200'
-                          }`}
+                          className={`w-full rounded-2xl border bg-slate-50 shadow-inner px-4 py-3 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all hover:border-slate-300 ${dueAmount > 0 && !shopId
+                            ? 'border-amber-300'
+                            : 'border-slate-200'
+                            }`}
                         >
                           <option value="">Optional shop</option>
                           {shops.map((shop) => (
@@ -785,7 +782,7 @@ export function CreateSalePage() {
                           type="datetime-local"
                           value={saleDate}
                           onChange={(event) => setSaleDate(event.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 shadow-inner px-4 py-3 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all hover:border-slate-300"
                         />
                       </label>
                     </div>
@@ -808,7 +805,7 @@ export function CreateSalePage() {
                                 onChange={(event) =>
                                   setShopForm((current) => ({ ...current, name: event.target.value }))
                                 }
-                                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all hover:shadow-md hover:border-slate-300"
                                 placeholder="Enter shop name"
                               />
                             </label>
@@ -820,7 +817,7 @@ export function CreateSalePage() {
                                 onChange={(event) =>
                                   setShopForm((current) => ({ ...current, ownerName: event.target.value }))
                                 }
-                                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all hover:shadow-md hover:border-slate-300"
                                 placeholder="Optional owner name"
                               />
                             </label>
@@ -832,7 +829,7 @@ export function CreateSalePage() {
                                 onChange={(event) =>
                                   setShopForm((current) => ({ ...current, phone: event.target.value }))
                                 }
-                                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all hover:shadow-md hover:border-slate-300"
                                 placeholder="Optional phone"
                               />
                             </label>
@@ -845,7 +842,7 @@ export function CreateSalePage() {
                                   setShopForm((current) => ({ ...current, address: event.target.value }))
                                 }
                                 rows={3}
-                                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all hover:shadow-md hover:border-slate-300"
                                 placeholder="Optional address"
                               />
                             </label>
@@ -877,7 +874,7 @@ export function CreateSalePage() {
                         <input
                           value={invoiceNo}
                           onChange={(event) => setInvoiceNo(event.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 shadow-inner px-4 py-3 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all hover:border-slate-300"
                           placeholder="Leave blank to let backend generate one"
                         />
                       </label>
@@ -885,8 +882,8 @@ export function CreateSalePage() {
                       <label className="block space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm font-medium text-slate-700">Invoice Discount</span>
-                          <select 
-                            value={invoiceDiscountType} 
+                          <select
+                            value={invoiceDiscountType}
                             onChange={(event: ChangeEvent<HTMLSelectElement>) =>
                               setInvoiceDiscountType(
                                 event.target.value as 'percentage' | 'fixed',
@@ -904,7 +901,7 @@ export function CreateSalePage() {
                           step="0.01"
                           value={invoiceDiscountValue}
                           onChange={(event) => setInvoiceDiscountValue(event.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 shadow-inner px-4 py-3 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all hover:border-slate-300"
                           placeholder={`Discount ${invoiceDiscountType === 'percentage' ? '%' : 'Amount'}`}
                         />
                       </label>
@@ -933,9 +930,8 @@ export function CreateSalePage() {
                           value={paidAmount}
                           onChange={(event) => setPaidAmount(event.target.value)}
                           disabled={paymentMode === 'full'}
-                          className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm ${
-                            paymentMode === 'full' ? 'cursor-not-allowed opacity-70' : ''
-                          }`}
+                          className={`w-full rounded-2xl border border-slate-200 bg-slate-50 shadow-inner px-4 py-3 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all hover:border-slate-300 ${paymentMode === 'full' ? 'cursor-not-allowed opacity-70' : ''
+                            }`}
                         />
                       </label>
                     </div>
@@ -946,7 +942,7 @@ export function CreateSalePage() {
                         value={note}
                         onChange={(event) => setNote(event.target.value)}
                         rows={3}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 shadow-inner px-4 py-3 text-sm focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all hover:border-slate-300"
                         placeholder="Optional sale note"
                       />
                     </label>
@@ -969,11 +965,10 @@ export function CreateSalePage() {
                     </div>
                   )}
                   <div
-                    className={`rounded-2xl p-5 ${
-                      dueAmount > 0
-                        ? 'bg-amber-50 text-amber-900'
-                        : 'bg-emerald-50 text-emerald-900'
-                    }`}
+                    className={`rounded-2xl p-5 ${dueAmount > 0
+                      ? 'bg-amber-50 text-amber-900'
+                      : 'bg-emerald-50 text-emerald-900'
+                      }`}
                   >
                     <p className="text-sm">Due amount</p>
                     <p className="mt-2 text-3xl font-semibold">
@@ -1005,34 +1000,39 @@ export function CreateSalePage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
-                  <p className="font-semibold">Fast order entry</p>
-                  <p className="mt-2 leading-6">
-                    Use `Save & next order` when you are entering many sales on the same day. Company, route, date, and the quick full-paid mode stay ready so the next order is faster to enter.
+                <div className="rounded-3xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-blue-50 p-5 text-sm text-cyan-900 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-5 w-5 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <p className="font-bold">Fast order entry</p>
+                  </div>
+                  <p className="mt-2 leading-relaxed opacity-90">
+                    Use <span className="font-semibold text-cyan-800">Save & next order</span> when you are entering many sales on the same day. Company, route, date, and the quick full-paid mode stay ready so the next order is faster to enter.
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-3 md:flex-row">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                   <button
                     type="button"
                     disabled={isSaving}
                     onClick={() => void submitSale('next')}
-                    className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
+                    className="flex-1 rounded-2xl bg-slate-900 px-6 py-4 text-sm font-bold text-white shadow-md transition-all hover:bg-slate-800 hover:shadow-lg disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
                   >
-                    {isSaving ? 'Saving...' : 'Save & next order'}
+                    {isSaving ? 'Saving...' : 'Save & Next Order'}
                   </button>
                   <button
                     type="submit"
                     disabled={isSaving}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 disabled:opacity-60 hover:bg-slate-50 transition"
+                    className="flex-1 rounded-2xl border-2 border-slate-200 bg-white px-6 py-4 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2"
                   >
-                    {isSaving ? 'Saving...' : 'Save & view details'}
+                    {isSaving ? 'Saving...' : 'Save & View Details'}
                   </button>
                   <button
                     type="button"
                     disabled={isSaving}
                     onClick={() => void submitSale('print')}
-                    className="rounded-2xl border-2 border-indigo-600 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700 disabled:opacity-60 hover:bg-indigo-100 transition"
+                    className="flex-1 rounded-2xl border-2 border-indigo-600 bg-indigo-50 px-6 py-4 text-sm font-bold text-indigo-700 shadow-sm transition-all hover:bg-indigo-100 hover:shadow-md disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
                   >
                     {isSaving ? 'Saving...' : 'Save & Print Invoice'}
                   </button>
@@ -1040,448 +1040,445 @@ export function CreateSalePage() {
               </div>
 
               <div className="xl:sticky xl:top-6">
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-6">
-                <h3 className="text-xl font-semibold text-slate-900">Sale Items</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Add one or more products. Unit price is editable, buy price comes from the product.
-                </p>
-              </div>
+                <div className="rounded-3xl border border-slate-100 bg-white p-5 md:p-6 shadow-sm transition-all hover:shadow-md">
+                  <div className="mb-6">
+                    <h3 className="text-xl font-bold tracking-tight text-slate-900">Sale Items</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      Add one or more products. Unit price is editable, buy price comes from the product.
+                    </p>
+                  </div>
 
-              <div className="space-y-4">
-                {items.map((item, index) => {
-                  const product = selectedProducts[index];
-                  const calculation = itemCalculations[index];
-                  const selectedProductCompany = product
-                    ? product.company ?? companyById.get(product.companyId)
-                    : null;
-                  const isGlobalProductSearch = item.productSearch.trim().length > 0;
-                  const productSearchPool =
-                    isGlobalProductSearch && allProducts.length > 0
-                      ? allProducts
-                      : products;
-                  const { matches: matchedProducts, total: totalMatchedProducts } =
-                    getAdvancedProductMatches(productSearchPool, item.productSearch);
-                  const showProductMatches = activeProductSearchId === item.id;
-                  const safeHighlightedProductIndex =
-                    matchedProducts.length > 0
-                      ? Math.min(
-                          highlightedProductIndex,
-                          matchedProducts.length - 1,
-                        )
-                      : -1;
-                  const productSearchStatusLabel = item.productSearch.trim()
-                    ? totalMatchedProducts > matchedProducts.length
-                      ? `Showing ${matchedProducts.length} of ${totalMatchedProducts} matches across companies`
-                      : `${totalMatchedProducts} match${
-                          totalMatchedProducts === 1 ? '' : 'es'
-                        } across companies`
-                    : `${products.length} products in selected company`;
+                  <div className="space-y-4">
+                    {items.map((item, index) => {
+                      const product = selectedProducts[index];
+                      const calculation = itemCalculations[index];
+                      const selectedProductCompany = product
+                        ? product.company ?? companyById.get(product.companyId)
+                        : null;
+                      const isGlobalProductSearch = item.productSearch.trim().length > 0;
+                      const productSearchPool =
+                        isGlobalProductSearch && allProducts.length > 0
+                          ? allProducts
+                          : products;
+                      const { matches: matchedProducts, total: totalMatchedProducts } =
+                        getAdvancedProductMatches(productSearchPool, item.productSearch);
+                      const showProductMatches = activeProductSearchId === item.id;
+                      const safeHighlightedProductIndex =
+                        matchedProducts.length > 0
+                          ? Math.min(
+                            highlightedProductIndex,
+                            matchedProducts.length - 1,
+                          )
+                          : -1;
+                      const productSearchStatusLabel = item.productSearch.trim()
+                        ? totalMatchedProducts > matchedProducts.length
+                          ? `Showing ${matchedProducts.length} of ${totalMatchedProducts} matches across companies`
+                          : `${totalMatchedProducts} match${totalMatchedProducts === 1 ? '' : 'es'
+                          } across companies`
+                        : `${products.length} products in selected company`;
 
-                  return (
-                    <div
-                      key={item.id}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                    >
-                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_0.8fr_0.8fr_0.8fr_auto]">
-                        <label className="block space-y-2">
-                          <span className="text-sm font-medium text-slate-700">
-                            Product
-                          </span>
-                          <div className="space-y-3">
-                            <div className="relative">
-                              <input
-                                value={item.productSearch}
-                                onFocus={() => {
-                                  setActiveProductSearchId(item.id);
-                                  setHighlightedProductIndex(0);
-                                }}
-                                onBlur={() => {
-                                  window.setTimeout(() => {
-                                    setActiveProductSearchId((current) =>
-                                      current === item.id ? null : current,
-                                    );
-                                  }, 120);
-                                }}
-                                onChange={(event) => {
-                                  const nextValue = event.target.value;
-                                  autoSelectProductForSearch(item.id, nextValue);
-                                  setActiveProductSearchId(item.id);
-                                  setHighlightedProductIndex(0);
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'ArrowDown') {
-                                    event.preventDefault();
-                                    setActiveProductSearchId(item.id);
-                                    setHighlightedProductIndex((current) =>
-                                      matchedProducts.length === 0
-                                        ? 0
-                                        : Math.min(
-                                            current + 1,
-                                            matchedProducts.length - 1,
-                                          ),
-                                    );
-                                    return;
-                                  }
-
-                                  if (event.key === 'ArrowUp') {
-                                    event.preventDefault();
-                                    setHighlightedProductIndex((current) =>
-                                      Math.max(current - 1, 0),
-                                    );
-                                    return;
-                                  }
-
-                                  if (event.key === 'Enter' && matchedProducts.length > 0) {
-                                    event.preventDefault();
-                                    selectProductForItem(
-                                      item.id,
-                                      matchedProducts[
-                                        safeHighlightedProductIndex >= 0
-                                          ? safeHighlightedProductIndex
-                                          : 0
-                                      ],
-                                    );
-                                    return;
-                                  }
-
-                                  if (event.key === 'Escape') {
-                                    setActiveProductSearchId(null);
-                                    setHighlightedProductIndex(0);
-                                  }
-                                }}
-                                placeholder="Search by product name, SKU, or unit"
-                                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                              />
-
-                              {showProductMatches ? (
-                                <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
-                                  {matchedProducts.length > 0 ? (
-                                    <>
-                                      <div className="border-b border-slate-100 px-4 py-3">
-                                        <div className="flex items-center justify-between gap-3">
-                                          <div>
-                                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                              {item.productSearch.trim()
-                                                ? 'Best matches across companies'
-                                                : 'Browse products'}
-                                            </p>
-                                            <p className="mt-1 text-xs text-slate-400">
-                                              Type to narrow results. Press Enter to select.
-                                            </p>
-                                          </div>
-                                          <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-600">
-                                            {productSearchStatusLabel}
-                                          </span>
-                                        </div>
-                                      </div>
-                                      <div className="max-h-72 overflow-y-auto p-2">
-                                        {matchedProducts.map((productOption, matchIndex) => {
-                                          const isHighlighted =
-                                            matchIndex === safeHighlightedProductIndex;
-                                          const isSelected =
-                                            productOption.id === Number(item.productId);
-                                          const matchedCompany =
-                                            productOption.company ??
-                                            companyById.get(productOption.companyId);
-
-                                          return (
-                                            <button
-                                              key={productOption.id}
-                                              type="button"
-                                              onMouseDown={(event) => event.preventDefault()}
-                                              onMouseEnter={() =>
-                                                setHighlightedProductIndex(matchIndex)
-                                              }
-                                              onClick={() =>
-                                                selectProductForItem(item.id, productOption)
-                                              }
-                                              className={`flex w-full items-start justify-between gap-3 rounded-2xl px-3 py-3 text-left transition ${
-                                                isHighlighted
-                                                  ? 'bg-slate-900 text-white'
-                                                  : isSelected
-                                                    ? 'bg-cyan-50'
-                                                    : 'hover:bg-slate-50'
-                                              }`}
-                                            >
-                                              <div>
-                                                <div className="flex items-center gap-2">
-                                                  <p
-                                                    className={`font-medium ${
-                                                      isHighlighted
-                                                        ? 'text-white'
-                                                        : 'text-slate-900'
-                                                    }`}
-                                                  >
-                                                    {productOption.name}
-                                                  </p>
-                                                  {isSelected ? (
-                                                    <span
-                                                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                                                        isHighlighted
-                                                          ? 'bg-white/15 text-white'
-                                                          : 'bg-cyan-100 text-cyan-700'
-                                                      }`}
-                                                    >
-                                                      Selected
-                                                    </span>
-                                                  ) : null}
-                                                </div>
-                                                <p
-                                                  className={`mt-1 text-xs ${
-                                                    isHighlighted
-                                                      ? 'text-slate-200'
-                                                      : 'text-slate-500'
-                                                  }`}
-                                                >
-                                                  SKU {productOption.sku} / Unit {productOption.unit}
-                                                </p>
-                                                <p
-                                                  className={`mt-1 text-xs font-semibold ${
-                                                    isHighlighted
-                                                      ? 'text-cyan-200'
-                                                      : 'text-emerald-600'
-                                                  }`}
-                                                >
-                                                  In Stock: {formatNumber(stockSummary[productOption.id] || 0)}
-                                                </p>
-                                                <p
-                                                  className={`mt-1 text-xs ${
-                                                    isHighlighted
-                                                      ? 'text-slate-300'
-                                                      : 'text-slate-400'
-                                                  }`}
-                                                >
-                                                  Company {matchedCompany?.name || 'Unknown'} /{' '}
-                                                  {matchedCompany?.code || 'N/A'}
-                                                </p>
-                                              </div>
-                                              <div className="text-right">
-                                                <span
-                                                  className={`text-xs font-semibold ${
-                                                    isHighlighted
-                                                      ? 'text-white'
-                                                      : 'text-slate-600'
-                                                  }`}
-                                                >
-                                                  {formatCurrency(productOption.salePrice)}
-                                                </span>
-                                                {showBuyPrice && (
-                                                  <p
-                                                    className={`mt-1 text-[11px] ${
-                                                      isHighlighted
-                                                        ? 'text-slate-300'
-                                                        : 'text-slate-400'
-                                                    }`}
-                                                  >
-                                                    Buy {formatCurrency(productOption.buyPrice)}
-                                                  </p>
-                                                )}
-                                              </div>
-                                            </button>
+                      return (
+                        <div
+                          key={item.id}
+                          className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:shadow-md"
+                        >
+                          <div className="flex flex-col gap-5">
+                            {/* Top Row: Product Search */}
+                            <div className="w-full">
+                              <label className="block space-y-2">
+                                <span className="text-sm font-bold text-slate-700">
+                                  Product
+                                </span>
+                                <div className="space-y-3">
+                                  <div className="relative">
+                                    <input
+                                      value={item.productSearch}
+                                      onFocus={() => {
+                                        setActiveProductSearchId(item.id);
+                                        setHighlightedProductIndex(0);
+                                      }}
+                                      onBlur={() => {
+                                        window.setTimeout(() => {
+                                          setActiveProductSearchId((current) =>
+                                            current === item.id ? null : current,
                                           );
-                                        })}
+                                        }, 120);
+                                      }}
+                                      onChange={(event) => {
+                                        const nextValue = event.target.value;
+                                        autoSelectProductForSearch(item.id, nextValue);
+                                        setActiveProductSearchId(item.id);
+                                        setHighlightedProductIndex(0);
+                                      }}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'ArrowDown') {
+                                          event.preventDefault();
+                                          setActiveProductSearchId(item.id);
+                                          setHighlightedProductIndex((current) =>
+                                            matchedProducts.length === 0
+                                              ? 0
+                                              : Math.min(
+                                                current + 1,
+                                                matchedProducts.length - 1,
+                                              ),
+                                          );
+                                          return;
+                                        }
+
+                                        if (event.key === 'ArrowUp') {
+                                          event.preventDefault();
+                                          setHighlightedProductIndex((current) =>
+                                            Math.max(current - 1, 0),
+                                          );
+                                          return;
+                                        }
+
+                                        if (event.key === 'Enter' && matchedProducts.length > 0) {
+                                          event.preventDefault();
+                                          selectProductForItem(
+                                            item.id,
+                                            matchedProducts[
+                                            safeHighlightedProductIndex >= 0
+                                              ? safeHighlightedProductIndex
+                                              : 0
+                                            ],
+                                          );
+                                          return;
+                                        }
+
+                                        if (event.key === 'Escape') {
+                                          setActiveProductSearchId(null);
+                                          setHighlightedProductIndex(0);
+                                        }
+                                      }}
+                                      placeholder="Search by product name, SKU, or unit"
+                                      className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all hover:shadow-md hover:border-slate-300"
+                                    />
+
+                                    {showProductMatches ? (
+                                      <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+                                        {matchedProducts.length > 0 ? (
+                                          <>
+                                            <div className="border-b border-slate-100 px-4 py-3">
+                                              <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                    {item.productSearch.trim()
+                                                      ? 'Best matches across companies'
+                                                      : 'Browse products'}
+                                                  </p>
+                                                  <p className="mt-1 text-xs text-slate-400">
+                                                    Type to narrow results. Press Enter to select.
+                                                  </p>
+                                                </div>
+                                                <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-600">
+                                                  {productSearchStatusLabel}
+                                                </span>
+                                              </div>
+                                            </div>
+                                            <div className="max-h-72 overflow-y-auto p-2">
+                                              {matchedProducts.map((productOption, matchIndex) => {
+                                                const isHighlighted =
+                                                  matchIndex === safeHighlightedProductIndex;
+                                                const isSelected =
+                                                  productOption.id === Number(item.productId);
+                                                const matchedCompany =
+                                                  productOption.company ??
+                                                  companyById.get(productOption.companyId);
+
+                                                return (
+                                                  <button
+                                                    key={productOption.id}
+                                                    type="button"
+                                                    onMouseDown={(event) => event.preventDefault()}
+                                                    onMouseEnter={() =>
+                                                      setHighlightedProductIndex(matchIndex)
+                                                    }
+                                                    onClick={() =>
+                                                      selectProductForItem(item.id, productOption)
+                                                    }
+                                                    className={`flex w-full items-start justify-between gap-3 rounded-2xl px-3 py-3 text-left transition ${isHighlighted
+                                                      ? 'bg-slate-900 text-white'
+                                                      : isSelected
+                                                        ? 'bg-cyan-50'
+                                                        : 'hover:bg-slate-50'
+                                                      }`}
+                                                  >
+                                                    <div>
+                                                      <div className="flex items-center gap-2">
+                                                        <p
+                                                          className={`font-medium ${isHighlighted
+                                                            ? 'text-white'
+                                                            : 'text-slate-900'
+                                                            }`}
+                                                        >
+                                                          {productOption.name}
+                                                        </p>
+                                                        {isSelected ? (
+                                                          <span
+                                                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${isHighlighted
+                                                              ? 'bg-white/15 text-white'
+                                                              : 'bg-cyan-100 text-cyan-700'
+                                                              }`}
+                                                          >
+                                                            Selected
+                                                          </span>
+                                                        ) : null}
+                                                      </div>
+                                                      <p
+                                                        className={`mt-1 text-xs ${isHighlighted
+                                                          ? 'text-slate-200'
+                                                          : 'text-slate-500'
+                                                          }`}
+                                                      >
+                                                        SKU {productOption.sku} / Unit {productOption.unit}
+                                                      </p>
+                                                      <p
+                                                        className={`mt-1 text-xs font-semibold ${isHighlighted
+                                                          ? 'text-cyan-200'
+                                                          : 'text-emerald-600'
+                                                          }`}
+                                                      >
+                                                        In Stock: {formatNumber(stockSummary[productOption.id] || 0)}
+                                                      </p>
+                                                      <p
+                                                        className={`mt-1 text-xs ${isHighlighted
+                                                          ? 'text-slate-300'
+                                                          : 'text-slate-400'
+                                                          }`}
+                                                      >
+                                                        Company {matchedCompany?.name || 'Unknown'} /{' '}
+                                                        {matchedCompany?.code || 'N/A'}
+                                                      </p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                      <span
+                                                        className={`text-xs font-semibold ${isHighlighted
+                                                          ? 'text-white'
+                                                          : 'text-slate-600'
+                                                          }`}
+                                                      >
+                                                        {formatCurrency(productOption.salePrice)}
+                                                      </span>
+                                                      {showBuyPrice && (
+                                                        <p
+                                                          className={`mt-1 text-[11px] ${isHighlighted
+                                                            ? 'text-slate-300'
+                                                            : 'text-slate-400'
+                                                            }`}
+                                                        >
+                                                          Buy {formatCurrency(productOption.buyPrice)}
+                                                        </p>
+                                                      )}
+                                                    </div>
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <div className="px-4 py-4 text-sm text-slate-500">
+                                            {isGlobalProductSearch
+                                              ? 'No matching product found in any company.'
+                                              : 'No products found for the selected company.'}
+                                          </div>
+                                        )}
                                       </div>
-                                    </>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                                    <span>{productSearchStatusLabel}</span>
+                                    <span>
+                                      {item.productSearch.trim().length >= 3
+                                        ? 'Company + product auto-select is active'
+                                        : 'Type 3+ letters or use Arrow + Enter'}
+                                    </span>
+                                  </div>
+
+                                  {product ? (
+                                    <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+                                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700">
+                                        Selected product
+                                      </p>
+                                      <p className="mt-2 font-semibold">{product.name}</p>
+                                      <p className="mt-1 text-xs">
+                                        SKU {product.sku} / Unit {product.unit} / Sale price{' '}
+                                        {formatCurrency(product.salePrice)}
+                                      </p>
+                                      <p className="mt-1 text-xs font-bold text-emerald-600">
+                                        Current Stock: {formatNumber(stockSummary[product.id] || 0)} {product.unit}
+                                      </p>
+                                      <p className="mt-1 text-xs text-cyan-700">
+                                        Company {selectedProductCompany?.name || 'Unknown'} /{' '}
+                                        {selectedProductCompany?.code || 'N/A'}
+                                      </p>
+                                    </div>
                                   ) : (
-                                    <div className="px-4 py-4 text-sm text-slate-500">
-                                      {isGlobalProductSearch
-                                        ? 'No matching product found in any company.'
-                                        : 'No products found for the selected company.'}
+                                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+                                      Search and pick a product for this sale item.
                                     </div>
                                   )}
                                 </div>
-                              ) : null}
+                              </label>
                             </div>
 
-                            <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
-                              <span>{productSearchStatusLabel}</span>
-                              <span>
-                                {item.productSearch.trim().length >= 3
-                                  ? 'Company + product auto-select is active'
-                                  : 'Type 3+ letters or use Arrow + Enter'}
-                              </span>
+                            {/* Bottom Row: Numeric Inputs & Actions */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4 items-end">
+                              <label className="block space-y-2">
+                                <span className="text-sm font-bold text-slate-700">
+                                  Quantity
+                                </span>
+                                <input
+                                  type="number"
+                                  min="0.001"
+                                  step="0.001"
+                                  value={item.quantity}
+                                  onChange={(event) =>
+                                    updateSaleItem(item.id, (currentItem) => ({
+                                      ...currentItem,
+                                      quantity: event.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all hover:shadow-md hover:border-slate-300"
+                                />
+                              </label>
+
+                              <label className="block space-y-2 lg:col-span-1 xl:col-span-1">
+                                <span className="text-sm font-bold text-slate-700">
+                                  Unit price
+                                </span>
+                                <input
+                                  type="number"
+                                  min="0.01"
+                                  step="0.01"
+                                  value={item.unitPrice}
+                                  onChange={(event) =>
+                                    updateSaleItem(item.id, (currentItem) => ({
+                                      ...currentItem,
+                                      unitPrice: event.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all hover:shadow-md hover:border-slate-300"
+                                />
+                              </label>
+
+                              <label className="block space-y-2 lg:col-span-1 xl:col-span-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-sm font-bold text-slate-700">Discount</span>
+                                  <select
+                                    value={item.discountType}
+                                    onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                                      updateSaleItem(item.id, (currentItem) => ({
+                                        ...currentItem,
+                                        discountType: event.target.value as
+                                          | 'percentage'
+                                          | 'fixed',
+                                      }))
+                                    }
+                                    className="text-xs bg-slate-100 border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                  >
+                                    <option value="percentage">%</option>
+                                    <option value="fixed">Fix</option>
+                                  </select>
+                                </div>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={item.discountValue}
+                                  onChange={(event) =>
+                                    updateSaleItem(item.id, (currentItem) => ({
+                                      ...currentItem,
+                                      discountValue: event.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all hover:shadow-md hover:border-slate-300"
+                                />
+                              </label>
+
+                              <label className="block space-y-2 lg:col-span-1 xl:col-span-1">
+                                <span className="text-sm font-bold text-slate-700">Free Qty</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.001"
+                                  value={item.freeQuantity}
+                                  onChange={(event) =>
+                                    updateSaleItem(item.id, (currentItem) => ({
+                                      ...currentItem,
+                                      freeQuantity: event.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all hover:shadow-md hover:border-slate-300"
+                                />
+                              </label>
+
+                              {showBuyPrice && (
+                                <div className="space-y-2">
+                                  <span className="text-sm font-bold text-slate-700">
+                                    Buy price
+                                  </span>
+                                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                                    {formatCurrency(product?.buyPrice ?? 0)}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="w-full">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setItems((current) =>
+                                      current.length === 1
+                                        ? current
+                                        : current.filter(
+                                          (currentItem) => currentItem.id !== item.id,
+                                        ),
+                                    )
+                                  }
+                                  className="w-full xl:w-auto rounded-2xl border border-rose-200 bg-rose-50/50 px-5 py-3 text-sm font-bold text-rose-700 transition-colors hover:bg-rose-100"
+                                >
+                                  Remove
+                                </button>
+                              </div>
                             </div>
 
-                            {product ? (
-                              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
-                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700">
-                                  Selected product
-                                </p>
-                                <p className="mt-2 font-semibold">{product.name}</p>
-                                <p className="mt-1 text-xs">
-                                  SKU {product.sku} / Unit {product.unit} / Sale price{' '}
-                                  {formatCurrency(product.salePrice)}
-                                </p>
-                                <p className="mt-1 text-xs font-bold text-emerald-600">
-                                  Current Stock: {formatNumber(stockSummary[product.id] || 0)} {product.unit}
-                                </p>
-                                <p className="mt-1 text-xs text-cyan-700">
-                                  Company {selectedProductCompany?.name || 'Unknown'} /{' '}
-                                  {selectedProductCompany?.code || 'N/A'}
+                            <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 border-t border-slate-100 pt-4">
+                              <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-100">
+                                <p className="text-slate-500 font-medium">Product unit</p>
+                                <p className="mt-0.5 font-bold text-slate-800">
+                                  {product?.unit ?? 'Not selected'}
                                 </p>
                               </div>
-                            ) : (
-                              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
-                                Search and pick a product for this sale item.
+                              <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-100">
+                                <p className="text-slate-500 font-medium">Line total</p>
+                                <p className="mt-0.5 font-bold text-slate-800">
+                                  {formatCurrency(calculation.lineTotal)}
+                                </p>
                               </div>
-                            )}
-                          </div>
-                        </label>
-
-                        <label className="block space-y-2">
-                          <span className="text-sm font-medium text-slate-700">
-                            Quantity
-                          </span>
-                          <input
-                            type="number"
-                            min="0.001"
-                            step="0.001"
-                            value={item.quantity}
-                            onChange={(event) =>
-                              updateSaleItem(item.id, (currentItem) => ({
-                                ...currentItem,
-                                quantity: event.target.value,
-                              }))
-                            }
-                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                          />
-                        </label>
-
-                        <label className="block space-y-2">
-                          <span className="text-sm font-medium text-slate-700">
-                            Unit price
-                          </span>
-                          <input
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            value={item.unitPrice}
-                            onChange={(event) =>
-                              updateSaleItem(item.id, (currentItem) => ({
-                                ...currentItem,
-                                unitPrice: event.target.value,
-                              }))
-                            }
-                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                          />
-                        </label>
-
-                        <label className="block space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-medium text-slate-700">Discount</span>
-                            <select
-                                value={item.discountType}
-                                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                                  updateSaleItem(item.id, (currentItem) => ({
-                                    ...currentItem,
-                                    discountType: event.target.value as
-                                      | 'percentage'
-                                      | 'fixed',
-                                  }))
-                                }
-                                className="text-xs bg-slate-100 border px-1"
-                            >
-                                <option value="percentage">%</option>
-                                <option value="fixed">Fix</option>
-                            </select>
-                          </div>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.discountValue}
-                            onChange={(event) =>
-                              updateSaleItem(item.id, (currentItem) => ({
-                                ...currentItem,
-                                discountValue: event.target.value,
-                              }))
-                            }
-                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                          />
-                        </label>
-
-                        <label className="block space-y-2">
-                          <span className="text-sm font-medium text-slate-700">Free Qty</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.001"
-                            value={item.freeQuantity}
-                            onChange={(event) =>
-                              updateSaleItem(item.id, (currentItem) => ({
-                                ...currentItem,
-                                freeQuantity: event.target.value,
-                              }))
-                            }
-                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                          />
-                        </label>
-
-                        {showBuyPrice && (
-                          <div className="space-y-2">
-                            <span className="text-sm font-medium text-slate-700">
-                              Buy price
-                            </span>
-                            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                              {formatCurrency(product?.buyPrice ?? 0)}
+                              {showProfit && (
+                                <div className="rounded-xl bg-emerald-50/50 px-3 py-2 text-xs border border-emerald-100/50">
+                                  <p className="text-emerald-600/80 font-medium">Line profit</p>
+                                  <p className="mt-0.5 font-bold text-emerald-700">
+                                    {formatCurrency(calculation.lineProfit)}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </div>
-                        )}
-
-                        <div className="flex items-end">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setItems((current) =>
-                                current.length === 1
-                                  ? current
-                                  : current.filter(
-                                      (currentItem) => currentItem.id !== item.id,
-                                    ),
-                              )
-                            }
-                            className="rounded-2xl border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700"
-                          >
-                            Remove
-                          </button>
                         </div>
-                      </div>
+                      );
+                    })}
 
-                      <div className="mt-4 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-2xl bg-white px-4 py-3 text-sm">
-                          <p className="text-slate-500">Product unit</p>
-                          <p className="mt-1 font-medium text-slate-900">
-                            {product?.unit ?? 'Not selected'}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl bg-white px-4 py-3 text-sm">
-                          <p className="text-slate-500">Line total</p>
-                          <p className="mt-1 font-medium text-slate-900">
-                            {formatCurrency(calculation.lineTotal)}
-                          </p>
-                        </div>
-                        {showProfit && (
-                          <div className="rounded-2xl bg-white px-4 py-3 text-sm">
-                            <p className="text-slate-500">Line profit</p>
-                            <p className="mt-1 font-medium text-slate-900">
-                              {formatCurrency(calculation.lineProfit)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                <button
-                  type="button"
-                  onClick={() => setItems((current) => [...current, initialItem()])}
-                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700"
-                >
-                  Add another item
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      onClick={() => setItems((current) => [...current, initialItem()])}
+                      className="w-full rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 py-4 text-sm font-bold text-slate-600 transition-all hover:border-slate-400 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+                    >
+                      + Add another item
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1525,3 +1522,4 @@ export function CreateSalePage() {
     </div>
   );
 }
+

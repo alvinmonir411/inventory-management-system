@@ -79,6 +79,11 @@ export class SalesController {
     return this.salesService.getDueOverview(query);
   }
 
+  @Get('reports/daily-summary')
+  getDailySummaryReport(@Query() query: SalesSummaryQueryDto & { scope?: 'all' | 'company' }) {
+    return this.salesService.getDailySummaryReport(query);
+  }
+
   @Get('shops/:shopId/due-details')
   getShopDueDetails(@Param('shopId', ParseIntPipe) shopId: number) {
     return this.salesService.getShopDueDetails(shopId);
