@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -92,6 +94,19 @@ export class SalesController {
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.salesService.findOne(id);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateSaleDto: any,
+  ) {
+    return this.salesService.update(id, updateSaleDto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.salesService.remove(id);
   }
 
   @Post(':id/payments')

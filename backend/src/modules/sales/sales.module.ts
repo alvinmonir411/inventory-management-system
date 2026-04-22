@@ -8,6 +8,8 @@ import { StockMovement } from '../stock/entities/stock-movement.entity';
 import { SaleItem } from './entities/sale-item.entity';
 import { SalePayment } from './entities/sale-payment.entity';
 import { Sale } from './entities/sale.entity';
+import { DeliverySummary } from '../delivery-summaries/entities/delivery-summary.entity';
+import { DeliverySummaryItem } from '../delivery-summaries/entities/delivery-summary-item.entity';
 import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
 
@@ -22,6 +24,8 @@ import { SalesService } from './sales.service';
       Shop,
       Product,
       StockMovement,
+      DeliverySummary,
+      DeliverySummaryItem,
     ]),
   ],
   controllers: [SalesController],
